@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email in ['canteen-staff@gmail.com', 'your-email@gmail.com', 'varadmalpure@gmail.com'] ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    match /admins/{admin} {
+      allow read, write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+    }
+
+    match /menuItems/{item} {
+      allow read: if true;
+      allow write: if isAdmin(); 
+    }
+    
+    // Allow clients to increment the token counter, but ONLY by exactly 1.
+    match /metadata/counter {
+      allow read: if true;
+      allow write: if (resource == null && request.resource.data.current_token is number) || 
+                      (request.resource.data.current_token == resource.data.current_token + 1);
+    }
+    
+    match /orders/{order} {
+      // Students can read specific orders to track them
+      allow get: if true;
+      allow list: if isAdmin() || (request.auth != null && resource.data.uid == request.auth.uid);
+      
+      // Enforce strict schema and require anonymous auth to prevent blatant spoofing
+      allow create: if 
+        request.auth != null &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.status == 'Pending' &&
+        request.resource.data.keys().hasAll(['uid', 'token_number', 'items', 'total_amount', 'status', 'created_at', 'payment_status', 'payment_method']) &&
+        request.resource.data.total_amount is number &&
+        request.resource.data.total_amount >= 0 &&
+        request.resource.data.items is list &&
+        request.resource.data.items.size() > 0 &&
+        request.resource.data.token_number is string;
+        
+      allow update, delete: if isAdmin();
+    }
+  }
+}
