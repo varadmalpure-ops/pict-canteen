@@ -45,4 +45,7 @@ To populate the database with the initial menu items, you can temporarily call `
 
 ## Features
 - **Student View (`/`)**: Add items to cart (under 3 clicks), place order, and receive a Token Number (e.g. #A-104). The app enforces crowd control with live status tracking ("Preventing Counter Crowding").
+- **Bill Splitting**: Students can split the bill in a group using equal split or custom split amounts, and seamlessly coordinate payments.
+- **Secure Payments**: UTR number tracking for UPI payments.
 - **Admin View (`/admin`)**: High-contrast Kitchen Display for active orders. One-tap toggles to advance order state (`RECEIVED` $\rightarrow$ `PREPARING` $\rightarrow$ `READY` $\rightarrow$ `COMPLETED`). Quick toggle switches for Inventory Control.
+- **Security**: Firebase AppCheck with ReCaptcha V3 integrated to prevent bot abuse.
