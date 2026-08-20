@@ -81,6 +81,22 @@ export default function AdminView() {
 
     const unsubscribeMenu = onSnapshot(menuItemsCollection, (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MenuItem));
+      
+      // Auto-inject trial item if missing
+      const hasTestItem = items.some(i => i.id === 'test-trial-item');
+      if (!hasTestItem && user) {
+        import('firebase/firestore').then(({ setDoc, doc }) => {
+          setDoc(doc(db, 'menuItems', 'test-trial-item'), {
+            name: '🧪 Test Order (Trial)',
+            description: 'Zero-cost item to test the ordering pipeline. Will be removed later.',
+            price: 0,
+            category: 'Snacks & South Indian',
+            is_available: true,
+            isTest: true
+          }).catch(console.error);
+        });
+      }
+
       items.sort((a, b) => {
         const catA = (a.category || '').toLowerCase();
         const catB = (b.category || '').toLowerCase();
@@ -339,7 +355,12 @@ export default function AdminView() {
                       order.status === 'PREPARING' ? 'bg-orange-500' : 
                       'bg-green-500'}
                   `}>
-                    <div className="text-2xl font-black">{order.token_number}</div>
+                    <div className="text-2xl font-black flex items-center gap-2">
+                      {order.token_number}
+                      {(order.total_amount === 0 || order.items.some(i => i.isTest)) && (
+                        <span className="text-xs bg-black/30 px-2 py-1 rounded-md text-white tracking-widest uppercase">[TRIAL]</span>
+                      )}
+                    </div>
                     <div className="font-semibold px-3 py-1 rounded-full bg-white/20 text-sm">
                       {order.status}
                     </div>
@@ -353,8 +374,13 @@ export default function AdminView() {
 
                   <div className="p-6">
                     {order.status === 'Pending' && order.payment_status === 'Unverified' && !isFraud && (
-                      <div className="mb-4 bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm font-semibold flex items-center justify-center animate-pulse">
-                        ⚠️ Verify ₹{order.total_amount} ({order.payment_method}) received!
+                      <div className="mb-4 bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm font-semibold flex flex-col items-center justify-center gap-2 animate-pulse">
+                        <div>⚠️ Verify ₹{order.total_amount} received!</div>
+                        {order.utr_number && (
+                          <div className="bg-white px-4 py-2 rounded-lg border border-red-100 font-bold tracking-widest text-lg shadow-sm">
+                            UTR: {order.utr_number}
+                          </div>
+                        )}
                       </div>
                     )}
                     {isFraud && (

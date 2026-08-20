@@ -91,6 +91,16 @@ export async function initializeDatabase() {
     );
     await Promise.all(addPromises);
     
+    // Add temporary trial item
+    await setDoc(doc(db, 'menuItems', 'test-trial-item'), {
+      name: '🧪 Test Order (Trial)',
+      description: 'Zero-cost item to test the ordering pipeline. Will be removed later.',
+      price: 0,
+      category: 'Snacks & South Indian',
+      is_available: true,
+      isTest: true
+    });
+    
     // Initialize token counter
     const counterRef = doc(db, 'metadata', 'counter');
     const counterSnap = await getDoc(counterRef);

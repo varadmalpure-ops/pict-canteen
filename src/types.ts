@@ -7,6 +7,8 @@ export interface MenuItem {
   category: string;
   is_available: boolean;
   is_express?: boolean;
+  description?: string;
+  isTest?: boolean;
 }
 
 export interface OrderItem {
@@ -15,6 +17,7 @@ export interface OrderItem {
   price: number;
   quantity: number;
   is_express?: boolean;
+  isTest?: boolean;
 }
 
 export interface Order {
@@ -28,4 +31,5 @@ export interface Order {
   payment_status: 'Unverified' | 'Verified';
   payment_method?: string;
   scheduled_for?: string | null;
+  utr_number?: string;
 }

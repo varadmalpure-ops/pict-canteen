@@ -1,15 +1,27 @@
 import { useState, useEffect } from 'react';
-import { onSnapshot, addDoc, serverTimestamp, doc, runTransaction, query, where, limit, getDocs } from 'firebase/firestore';
+import { onSnapshot, addDoc, serverTimestamp, doc, runTransaction, query, where, getDocs, documentId } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, menuItemsCollection, ordersCollection, auth } from '../firebase';
 import type { MenuItem, OrderItem, Order } from '../types';
-import { ShoppingCart, Plus, Minus, CheckCircle2, ChevronRight, CreditCard, Smartphone, X, Loader2, QrCode, Users, Star, MapPin } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { ShoppingCart, Plus, Minus, CheckCircle2, ChevronRight, X, Loader2, Users, Star, MapPin, Receipt } from 'lucide-react';
 
 export default function StudentView() {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<OrderItem[]>([]);
-  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [activeOrderIds, setActiveOrderIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('activeOrderIds');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('activeOrderIds', JSON.stringify(activeOrderIds));
+  }, [activeOrderIds]);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState<MenuItem[]>([]);
 
@@ -66,8 +78,8 @@ export default function StudentView() {
 
   // Payment state
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD'>('UPI');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [utrNumber, setUtrNumber] = useState('');
   const [splitMode, setSplitMode] = useState<'NONE' | 'EQUAL' | 'CUSTOM'>('NONE');
   const [splitCount, setSplitCount] = useState(2);
   const [remainingSplitItems, setRemainingSplitItems] = useState<OrderItem[]>([]);
@@ -120,24 +132,19 @@ export default function StudentView() {
         setLoading(false);
       });
 
-      // Try to recover active order securely from database if user is anonymously logged in
+      // Try to recover active orders securely from database if user is anonymously logged in
       const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
         if (user) {
           try {
             const q = query(
               ordersCollection, 
               where('uid', '==', user.uid), 
-              where('status', 'in', ['Pending', 'PREPARING', 'READY']),
-              limit(1)
+              where('status', 'in', ['Pending', 'PREPARING', 'READY'])
             );
             const snap = await getDocs(q);
             if (!snap.empty) {
-              const orderDoc = snap.docs[0];
-              listenToOrder(orderDoc.id);
-            } else {
-              // Fallback to session storage if not found
-              const savedOrderId = sessionStorage.getItem('activeOrderId');
-              if (savedOrderId) listenToOrder(savedOrderId);
+              const ids = snap.docs.map(d => d.id);
+              setActiveOrderIds(prev => Array.from(new Set([...prev, ...ids])));
             }
           } catch (err) {
             console.error("Order recovery failed:", err);
@@ -155,50 +162,58 @@ export default function StudentView() {
     }
   }, []);
 
-  const listenToOrder = (orderId: string) => {
-    const unsubscribe = onSnapshot(doc(db, 'orders', orderId), (docSnap) => {
-      if (docSnap.exists()) {
-        const orderData = { id: docSnap.id, ...docSnap.data() } as Order;
-        if (orderData.status === 'COMPLETED') {
-          setActiveOrder(null);
-          sessionStorage.removeItem('activeOrderId');
-        } else if (orderData.status === 'CANCELLED') {
-          alert(`Your order ${orderData.token_number} was cancelled by the canteen. Please collect your refund from the counter.`);
-          setActiveOrder(null);
-          sessionStorage.removeItem('activeOrderId');
-        } else {
-          // Check if it just turned ready and trigger notification
-          if (orderData.status === 'READY') {
-            setActiveOrder((prev) => {
-              if (prev && prev.status !== 'READY') {
-                if ('Notification' in window && Notification.permission === 'granted') {
-                  new Notification('Your food is ready! 🎉', {
-                    body: `Token ${orderData.token_number} is ready for pickup at the counter!`,
-                    icon: '/pwa-192x192.png'
-                  });
-                }
-              }
-              return orderData;
-            });
-          } else {
-            setActiveOrder(orderData);
-          }
-        }
-      }
-    });
-    return unsubscribe;
-  };
-
-  // Kiosk Auto-reset: clear the screen after 10 seconds so the next student can order
+  // Batch Firestore Listener
   useEffect(() => {
-    if (activeOrder?.id) {
-      const timer = setTimeout(() => {
-        setActiveOrder(null);
-        sessionStorage.removeItem('activeOrderId');
-      }, 10000);
-      return () => clearTimeout(timer);
+    if (activeOrderIds.length === 0) {
+      setActiveOrders([]);
+      return;
     }
-  }, [activeOrder?.id]);
+
+    const validIds = activeOrderIds.slice(0, 10);
+    const q = query(ordersCollection, where(documentId(), 'in', validIds));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+      
+      let changed = false;
+      const nextActiveIds = [...activeOrderIds];
+
+      orders.forEach(orderData => {
+         if (orderData.status === 'COMPLETED' || orderData.status === 'CANCELLED') {
+           if (orderData.status === 'CANCELLED') {
+             alert(`Your order ${orderData.token_number} was cancelled by the canteen. Please collect your refund from the counter.`);
+           }
+           const idx = nextActiveIds.indexOf(orderData.id);
+           if (idx > -1) {
+             nextActiveIds.splice(idx, 1);
+             changed = true;
+           }
+         } else if (orderData.status === 'READY') {
+           // We can just rely on activeOrders state from the previous render, but it might be stale in closure.
+           // Since we just want to avoid spam, we'll check sessionStorage.
+           const notifKey = `notified_${orderData.id}`;
+           if (!sessionStorage.getItem(notifKey)) {
+             sessionStorage.setItem(notifKey, 'true');
+             if ('Notification' in window && Notification.permission === 'granted') {
+               new Notification('Your food is ready! 🎉', {
+                 body: `Token ${orderData.token_number} is ready for pickup at the counter!`,
+                 icon: '/pwa-192x192.png'
+               });
+             }
+           }
+         }
+      });
+
+      if (changed) {
+         setActiveOrderIds(nextActiveIds);
+         if (nextActiveIds.length === 0) {
+           setIsStatusModalOpen(false);
+         }
+      }
+      setActiveOrders(orders.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED'));
+    });
+
+    return () => unsubscribe();
+  }, [activeOrderIds]);
 
   const addToCart = (item: MenuItem) => {
     setCart(prev => {
@@ -206,7 +221,7 @@ export default function StudentView() {
       if (existing) {
         return prev.map(i => i.itemId === item.id ? { ...i, quantity: i.quantity + 1 } : i);
       }
-      return [...prev, { itemId: item.id, name: item.name, price: item.price, quantity: 1, is_express: item.is_express }];
+      return [...prev, { itemId: item.id, name: item.name, price: item.price, quantity: 1, is_express: item.is_express, isTest: item.isTest }];
     });
   };
 
@@ -223,8 +238,7 @@ export default function StudentView() {
       ? customSplitTotal 
       : cartTotal;
 
-  // Some merchant accounts strictly forbid dynamic amounts without API signatures. We must use the exact static string.
-  const upiLink = `upi://pay?pa=Q829774745@ybl&pn=PhonePe&mode=02`;
+  const isTestMode = cartTotal === 0 || cart.some(item => item.isTest);
 
   const placeOrder = async () => {
     if (cart.length === 0) return;
@@ -248,24 +262,44 @@ export default function StudentView() {
       // Automatically mark as READY if all items are express items
       const isExpressOrder = cart.every(item => item.is_express);
 
-      const newOrder = {
+      // Ensure cart items don't have undefined fields
+      const cleanCart = cart.map(item => ({
+        itemId: item.itemId || '',
+        name: item.name || '',
+        price: item.price || 0,
+        quantity: item.quantity || 1,
+        is_express: item.is_express ?? false,
+        isTest: item.isTest ?? false
+      }));
+
+      const sanitisedOrder = {
         uid: auth.currentUser?.uid || 'anonymous',
-        token_number: tokenStr,
-        items: cart,
-        total_amount: cartTotal,
+        userEmail: auth.currentUser?.email || 'Anonymous',
+        userName: auth.currentUser?.displayName || 'Anonymous',
+        token_number: tokenStr || '',
+        items: cleanCart,
+        total_amount: cartTotal || 0,
         status: isExpressOrder ? 'READY' : 'Pending',
         created_at: serverTimestamp(),
         payment_status: 'Unverified',
-        payment_method: paymentMethod,
-        scheduled_for: scheduledFor === 'now' ? null : (scheduledFor === 'custom' ? customTime : scheduledFor)
+        payment_method: 'UPI',
+        utr_number: utrNumber || '',
+        scheduled_for: scheduledFor === 'now' ? null : (scheduledFor === 'custom' ? (customTime || '') : (scheduledFor || ''))
       };
 
-      const docRef = await addDoc(ordersCollection, newOrder);
-      sessionStorage.setItem('activeOrderId', docRef.id);
-      listenToOrder(docRef.id);
+      console.log("Submitting Order Payload:", sanitisedOrder);
+
+      const docRef = await addDoc(ordersCollection, sanitisedOrder);
+      setActiveOrderIds(prev => {
+        if (!prev.includes(docRef.id)) {
+          return [...prev, docRef.id];
+        }
+        return prev;
+      });
       setCart([]);
+      setIsStatusModalOpen(true);
     } catch (error) {
-      console.error("Error placing order:", error);
+      console.error('Order placement failed:', error);
       alert("Failed to place order. Please try again.");
     }
   };
@@ -322,54 +356,7 @@ export default function StudentView() {
     return <div className="flex h-[calc(100vh-4rem)] items-center justify-center"><Loader2 className="animate-spin text-blue-600 mr-2"/> Loading Menu...</div>;
   }
 
-  // Active Order Tracking View
-  if (activeOrder && activeOrder.status !== 'COMPLETED') {
-    const statusSteps = ['Pending', 'PREPARING', 'READY'];
-    const currentStepIndex = statusSteps.indexOf(activeOrder.status);
-
-    return (
-      <div className="max-w-md mx-auto p-6 flex flex-col items-center justify-center min-h-[calc(100vh-4rem)]">
-        <div className="bg-white rounded-3xl shadow-xl p-8 w-full text-center border border-gray-100">
-          <div className="text-gray-500 mb-2 font-medium">Your Token Number</div>
-          <div className="text-6xl font-black text-blue-600 mb-2 tracking-tighter">
-            {activeOrder.token_number}
-          </div>
-          <div className="text-orange-500 font-bold mb-8 animate-pulse text-sm">
-            Please remember this number! Screen will reset shortly.
-          </div>
-
-          <div className="space-y-6 mb-8">
-            {statusSteps.map((step, index) => {
-              const isActive = index === currentStepIndex;
-              const isPast = index < currentStepIndex;
-              return (
-                <div key={step} className={`flex items-center gap-4 ${isPast ? 'opacity-50' : ''}`}>
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg
-                    ${isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : isPast ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                    {isPast ? <CheckCircle2 size={20} /> : index + 1}
-                  </div>
-                  <div className={`font-semibold text-lg ${isActive ? 'text-gray-900' : 'text-gray-500'}`}>
-                    {step}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {activeOrder.status === 'READY' ? (
-            <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-xl font-medium animate-pulse">
-              🎉 Your order is ready for pickup! Please proceed to the counter.
-            </div>
-          ) : (
-            <div className="bg-blue-50 text-blue-700 p-4 rounded-xl text-sm">
-              <span className="font-semibold block mb-1">Preventing Counter Crowding</span>
-              Please stay away from the counter until your Token Number is marked <strong>READY</strong>.
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // Active Order Tracking View and FAB will be rendered at the end of the component
 
   // Menu Categories
   const categories = Array.from(new Set(menu.map(item => item.category)));
@@ -484,6 +471,9 @@ export default function StudentView() {
                 setRemainingSplitItems(cart.map(item => ({...item})));
                 setCurrentSplitSelection({});
                 setSplitMode('NONE');
+                if (cartTotal === 0 || cart.some(i => i.isTest)) {
+                  setUtrNumber('TEST00000000');
+                }
                 setIsPaymentModalOpen(true);
               }}
               className="w-full bg-gray-900 text-white rounded-2xl p-4 flex items-center justify-between shadow-xl shadow-gray-900/20 active:scale-[0.98] transition-transform"
@@ -516,6 +506,12 @@ export default function StudentView() {
                 <X size={24}/>
               </button>
             </div>
+            
+            {isTestMode && (
+              <div className="bg-orange-100 text-orange-800 p-3 rounded-xl mb-6 font-semibold flex items-center justify-center text-sm border border-orange-200">
+                🧪 Trial Mode: Payment bypassed for testing.
+              </div>
+            )}
             
             <div className="bg-gray-50 p-4 rounded-2xl mb-6 border border-gray-100">
               <div className="flex items-center gap-2 text-gray-700 mb-3">
@@ -610,68 +606,39 @@ export default function StudentView() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              <button 
-                onClick={() => !isProcessingPayment && setPaymentMethod('UPI')}
-                disabled={isProcessingPayment}
-                className={`p-4 rounded-2xl flex flex-col items-center justify-center gap-2 border-2 transition-all ${paymentMethod === 'UPI' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200'} ${isProcessingPayment ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <QrCode size={28} />
-                <span className="font-semibold">Scan QR</span>
-              </button>
-              <button 
-                onClick={() => !isProcessingPayment && setPaymentMethod('CARD')}
-                disabled={isProcessingPayment}
-                className={`p-4 rounded-2xl flex flex-col items-center justify-center gap-2 border-2 transition-all ${paymentMethod === 'CARD' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200'} ${isProcessingPayment ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <CreditCard size={28} />
-                <span className="font-semibold">Tap Card</span>
-              </button>
+            <div className={`mb-6 flex flex-col items-center bg-gray-50 p-6 rounded-2xl border border-gray-100 transition-opacity ${splitMode === 'CUSTOM' && customSplitTotal === 0 && remainingSplitItems.length > 0 ? 'opacity-50 pointer-events-none' : ''}`}>
+              <div className="text-gray-500 font-medium mb-2">Canteen UPI ID</div>
+              <div className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-gray-200 mb-6 w-full justify-between shadow-sm">
+                <span className="font-bold text-gray-900 text-lg tracking-wide">Q829774745@ybl</span>
+                <button 
+                  onClick={() => navigator.clipboard.writeText('Q829774745@ybl')}
+                  className="text-blue-600 font-bold bg-blue-50 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors active:scale-95"
+                >
+                  Copy
+                </button>
+              </div>
+              
+              <div className="w-full text-left">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Enter 12-Digit UTR Number <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" 
+                  value={utrNumber}
+                  onChange={(e) => setUtrNumber(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                  placeholder="e.g. 312345678901"
+                  className={`w-full bg-white px-4 py-4 rounded-xl border-2 outline-none font-bold text-gray-900 tracking-[0.2em] text-center transition-colors ${utrNumber.length === 12 ? 'border-green-500 focus:border-green-500' : 'border-gray-200 focus:border-blue-500'}`}
+                  maxLength={12}
+                  required
+                />
+                <div className="h-4 mt-1 text-center">
+                  {utrNumber.length > 0 && utrNumber.length < 12 && (
+                    <p className="text-red-500 text-xs font-medium animate-pulse">UTR must be exactly 12 digits ({12 - utrNumber.length} more)</p>
+                  )}
+                  {utrNumber.length === 12 && (
+                    <p className="text-green-600 text-xs font-bold flex items-center justify-center gap-1"><CheckCircle2 size={12} /> Valid UTR format</p>
+                  )}
+                </div>
+              </div>
             </div>
-
-            {paymentMethod === 'UPI' ? (
-              <div className={`mb-6 flex flex-col items-center bg-gray-50 p-6 rounded-2xl border border-gray-100 transition-opacity ${splitMode === 'CUSTOM' && customSplitTotal === 0 && remainingSplitItems.length > 0 ? 'opacity-50 pointer-events-none' : ''}`}>
-                <a 
-                  href={upiLink}
-                  className="bg-white p-4 rounded-xl shadow-sm mb-4 hover:shadow-md transition-shadow cursor-pointer block"
-                >
-                  <QRCodeSVG 
-                    value={upiLink} 
-                    size={160} 
-                    level="H"
-                    includeMargin={true}
-                  />
-                </a>
-                <p className="text-gray-600 font-medium text-center mb-1">
-                  {splitMode === 'CUSTOM' 
-                    ? remainingSplitItems.length === 0 ? 'All items paid.' : 'Scan to pay your selected items' 
-                    : splitMode === 'EQUAL' 
-                      ? `Each person scan this QR to pay ₹${(cartTotal / splitCount).toFixed(2)}`
-                      : 'Scan or tap the QR code to pay'
-                  }
-                </p>
-                <a 
-                  href={upiLink}
-                  className="w-full bg-blue-100 text-blue-700 font-bold py-3 px-4 rounded-xl text-center active:scale-95 transition-transform sm:hidden mt-3"
-                >
-                  Open UPI App (GPay/PhonePe)
-                </a>
-                <div className="hidden sm:flex gap-2 text-sm text-gray-400 mt-2">
-                  <span>GPay</span> • <span>PhonePe</span> • <span>Paytm</span>
-                </div>
-              </div>
-            ) : (
-              <div className="mb-6 flex flex-col items-center justify-center bg-gray-50 p-8 rounded-2xl border border-gray-100 min-h-[250px]">
-                <div className="relative">
-                  <CreditCard size={64} className="text-gray-400 animate-pulse mb-4" />
-                  <div className="absolute top-0 right-0 -mr-2 -mt-2 bg-blue-100 text-blue-600 rounded-full p-1 animate-ping">
-                    <Smartphone size={16} />
-                  </div>
-                </div>
-                <p className="text-gray-600 font-medium text-center text-lg">Tap your card on the reader</p>
-                <p className="text-gray-400 text-sm mt-2 text-center">Please follow instructions on the pinpad</p>
-              </div>
-            )}
 
             <button 
               onClick={() => {
@@ -686,13 +653,14 @@ export default function StudentView() {
                   } else {
                     setRemainingSplitItems(newRemaining);
                     setCurrentSplitSelection({});
+                    setUtrNumber('');
                   }
                 } else {
                   handlePaymentSubmit();
                 }
               }}
-              disabled={isProcessingPayment || (splitMode === 'CUSTOM' && customSplitTotal === 0 && remainingSplitItems.length > 0)}
-              className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold text-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4"
+              disabled={isProcessingPayment || (!isTestMode && utrNumber.length !== 12) || (splitMode === 'CUSTOM' && customSplitTotal === 0 && remainingSplitItems.length > 0)}
+              className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold text-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
             >
               {isProcessingPayment ? (
                 <>
@@ -701,13 +669,88 @@ export default function StudentView() {
               ) : (
                 splitMode === 'CUSTOM'
                   ? remainingSplitItems.length === 0
-                    ? `Complete Order`
+                    ? `Confirm Payment & Place Order`
                     : (Object.keys(currentSplitSelection).length > 0 && remainingSplitItems.reduce((s, i) => s + i.quantity, 0) === Object.values(currentSplitSelection).reduce((a, b) => a + b, 0))
-                      ? `I have paid ₹${paymentAmount.toFixed(2)} - Complete Order`
-                      : `I have paid ₹${paymentAmount.toFixed(2)} - Next Person`
-                  : `I have paid ₹${paymentAmount.toFixed(2)} - Send Order`
+                      ? `Confirm Payment & Place Order`
+                      : `Confirm Payment & Next Person`
+                  : `Confirm Payment & Place Order`
               )}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Persistent FAB for Active Order */}
+      {activeOrders.length > 0 && !isStatusModalOpen && (
+        <button
+          onClick={() => setIsStatusModalOpen(true)}
+          className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all z-40"
+        >
+          <Receipt size={24} />
+          {activeOrders.some(o => o.status === 'READY') && (
+             <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full animate-ping"></span>
+          )}
+          {activeOrders.length > 1 && (
+            <span className="absolute -top-2 -left-2 bg-gray-900 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">{activeOrders.length}</span>
+          )}
+        </button>
+      )}
+
+      {/* Active Order Tracking Modal */}
+      {activeOrders.length > 0 && isStatusModalOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 transition-all">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-md border border-gray-100 relative max-h-[90vh] flex flex-col animate-in zoom-in-95">
+            <div className="flex justify-between items-center p-4 border-b border-gray-100 shrink-0">
+               <h3 className="font-bold text-lg">Active Orders ({activeOrders.length})</h3>
+               <button 
+                 onClick={() => setIsStatusModalOpen(false)}
+                 className="text-gray-400 hover:text-gray-600 bg-gray-50 rounded-full p-2"
+               >
+                 <X size={20} />
+               </button>
+            </div>
+            
+            <div className="p-4 overflow-y-auto space-y-4">
+              {activeOrders.map(order => (
+                <div key={order.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                  <div className="text-center mb-4">
+                    <div className="text-gray-500 mb-1 text-sm font-medium">Token Number</div>
+                    <div className="text-5xl font-black text-blue-600 tracking-tighter">
+                      {order.token_number}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center px-2 mb-4">
+                    {['Pending', 'PREPARING', 'READY'].map((step, index) => {
+                      const currentStepIndex = ['Pending', 'PREPARING', 'READY'].indexOf(order.status);
+                      const isActive = index === currentStepIndex;
+                      const isPast = index < currentStepIndex;
+                      return (
+                        <div key={step} className="flex flex-col items-center">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm mb-1
+                            ${isActive ? 'bg-blue-600 text-white shadow-md' : isPast ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                            {isPast ? <CheckCircle2 size={16} /> : index + 1}
+                          </div>
+                          <div className={`text-xs font-semibold ${isActive ? 'text-gray-900' : 'text-gray-500'}`}>
+                            {step}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {order.status === 'READY' ? (
+                    <div className="bg-green-100 border border-green-200 text-green-800 p-3 rounded-xl font-medium animate-pulse text-sm text-center">
+                      🎉 Ready for pickup!
+                    </div>
+                  ) : (
+                    <div className="bg-blue-100/50 text-blue-800 p-3 rounded-xl text-xs text-center">
+                      Please wait until marked <strong>READY</strong>.
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

@@ -13,6 +13,15 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// Initialize App Check to block scripts and bots
+if (typeof window !== 'undefined') {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider('6LfCTngtAAAAAOlBjK-eW-CdcavwvMJb9hP-QfHV'),
+    isTokenAutoRefreshEnabled: true
+  });
+}
+
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
@@ -20,14 +29,6 @@ export const auth = getAuth(app);
 enableMultiTabIndexedDbPersistence(db).catch((err) => {
   console.warn("Offline persistence failed:", err.code);
 });
-
-// Initialize App Check to block scripts and bots
-if (typeof window !== 'undefined') {
-  initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider('6LfCTngtAAAAAOIbjK-eW-CdcavwvMJb9hP-QfHV'), 
-    isTokenAutoRefreshEnabled: true
-  });
-}
 
 // Collection references
 export const menuItemsCollection = collection(db, 'menuItems');
