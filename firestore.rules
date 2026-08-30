@@ -1,39 +1,88 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Bootstrap admins by email (server-side rules only — not shipped in the Vite client).
+    // Prefer custom claim admin==true or admins/{uid} for ongoing access.
+    function isBootstrapAdminEmail() {
+      return request.auth.token.email in [
+        'canteen-staff@gmail.com',
+        'varadmalpure@gmail.com'
+      ];
+    }
+
     function isAdmin() {
       return request.auth != null && (
-        request.auth.token.email in ['canteen-staff@gmail.com', 'your-email@gmail.com', 'varadmalpure@gmail.com'] ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        request.auth.token.admin == true ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        isBootstrapAdminEmail()
       );
     }
 
-    match /admins/{admin} {
-      allow read, write: if isAdmin();
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    match /admins/{adminId} {
+      allow read: if isOwner(adminId) || isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /users/{userId} {
-      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow read: if isOwner(userId) || isAdmin();
+
+      allow create: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'uid', 'email', 'pnr', 'dob',
+          'idPhotoPath', 'selfiePath',
+          'verificationStatus', 'created_at', 'lastOrderAt'
+        ])
+        && request.resource.data.verificationStatus == 'pending'
+        && request.resource.data.pnr is string
+        && request.resource.data.pnr.size() > 0
+        && request.resource.data.pnr.size() < 32
+        && request.resource.data.dob is string
+        && request.resource.data.dob.size() < 32;
+
+      // Students may update photo paths / password-related profile fields only.
+      // They cannot change verificationStatus, uid, or email.
+      allow update: if isAdmin() || (
+        isOwner(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['verificationStatus', 'uid', 'email', 'lastOrderAt'])
+      );
     }
 
     match /menuItems/{item} {
       allow read: if true;
-      allow write: if isAdmin(); 
+      allow write: if isAdmin();
     }
-    
-    // Allow clients to increment the token counter, but ONLY by exactly 1.
-    match /metadata/counter {
-      allow read: if true;
-      allow write: if (resource == null && request.resource.data.current_token is number) || 
-                      (request.resource.data.current_token == resource.data.current_token + 1);
+
+    // Token counter: Admin SDK / Cloud Functions only
+    match /metadata/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
-    
+
+    // Full order documents — never creatable from clients
     match /orders/{orderId} {
-      // Allow anyone to create an order or read an order (for tracking)
-      allow create, read: if true;
-      // Only authorized admins can update status, or delete orders
-      allow update, delete: if request.auth != null && 
-        request.auth.token.email in ['canteen-staff@gmail.com', 'your-email@gmail.com', 'varadmalpure@gmail.com'];
+      allow create: if false;
+      allow read: if request.auth != null && (
+        resource.data.uid == request.auth.uid || isAdmin()
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // Public kitchen display — only token + status (no PII / UTR / email)
+    match /displayBoard/{orderId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Payment intents metadata readable by owner (optional gateway flow)
+    match /paymentIntents/{intentId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow write: if false;
     }
   }
 }

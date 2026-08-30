@@ -21,15 +21,16 @@ export interface OrderItem {
 }
 
 export interface Order {
-  id: string; // Document ID
-  uid: string; // Anonymous User ID
+  id: string;
+  uid: string;
   token_number: string;
   items: OrderItem[];
   total_amount: number;
   status: OrderStatus;
-  created_at: number; // timestamp
+  created_at: number | { toMillis?: () => number };
   payment_status: 'Unverified' | 'Verified';
   payment_method?: string;
   scheduled_for?: string | null;
   utr_number?: string;
+  razorpay_payment_id?: string | null;
 }

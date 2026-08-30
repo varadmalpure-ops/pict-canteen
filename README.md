@@ -28,24 +28,41 @@ A lightweight, real-time web application to streamline order management and elim
 ## Setup Instructions
 
 ### 1. Firebase Configuration
-You need to set up a Firebase project with a Firestore database:
-1. Go to the [Firebase Console](https://console.firebase.google.com/) and create a project.
-2. Enable **Firestore Database** in test mode (or configure security rules).
-3. Get your Web App config and paste it into `src/firebase.ts`.
+1. Create a Firebase project and enable **Auth**, **Firestore**, **Storage**, and **Functions**.
+2. Copy `.env.example` to `.env` and fill in the web app config + App Check reCAPTCHA site key.
+3. Deploy rules and functions:
+```bash
+firebase deploy --only firestore:rules,storage,functions
+```
+4. In Firebase Console → App Check: enforce App Check for **Firestore**, **Storage**, and **Cloud Functions**.
+5. (Optional) Razorpay online payments:
+```bash
+firebase functions:config:set razorpay.key_id="rzp_..." razorpay.key_secret="..." razorpay.webhook_secret="..."
+firebase deploy --only functions
+```
+Without Razorpay, students pay via UPI + UTR; staff must verify before advancing the order.
 
 ### 2. Run the Development Server
-Install dependencies and start the app:
 ```bash
 npm install
 npm run dev
 ```
+For local App Check, enable a debug token in the Firebase Console and uncomment `self.FIREBASE_APPCHECK_DEBUG_TOKEN = true` in `src/firebase.ts`.
 
 ### 3. Initialize Database
-To populate the database with the initial menu items, you can temporarily call `initializeDatabase()` from `initDb.ts` inside a `useEffect` in `App.tsx`, or run it manually.
+Call `initializeDatabase()` from `initDb.ts` while signed in as an admin (menu writes require admin). The token counter is created automatically by Cloud Functions on the first order.
+
+## Security model
+- Orders are created only via authenticated callable `placeOrder` (server prices from `menuItems`).
+- Clients cannot write `orders` or `metadata/counter`.
+- Live TV reads `displayBoard` (token + status only — no PII).
+- ID/selfie images go to **Storage** with per-user rules; Firestore stores paths + `verificationStatus`.
+- Admin access: custom claim `admin`, `admins/{uid}`, or bootstrap emails in **Firestore rules** (not in the Vite client).
+- App Check is required on callables (`enforceAppCheck: true`).
 
 ## Features
-- **Student View (`/`)**: Add items to cart (under 3 clicks), place order, and receive a Token Number (e.g. #A-104). The app enforces crowd control with live status tracking ("Preventing Counter Crowding").
-- **Bill Splitting**: Students can split the bill in a group using equal split or custom split amounts, and seamlessly coordinate payments.
-- **Secure Payments**: UTR number tracking for UPI payments.
-- **Admin View (`/admin`)**: High-contrast Kitchen Display for active orders. One-tap toggles to advance order state (`RECEIVED` $\rightarrow$ `PREPARING` $\rightarrow$ `READY` $\rightarrow$ `COMPLETED`). Quick toggle switches for Inventory Control.
-- **Security**: Firebase AppCheck with ReCaptcha V3 integrated to prevent bot abuse.
+- **Student View (`/`)**: Cart → server-validated order → token (e.g. `#A-104`).
+- **Bill Splitting**: Equal or custom split UX before payment.
+- **Payments**: Razorpay (signature-verified) when configured; otherwise UPI + UTR with staff verification.
+- **Admin View (`/admin`)**: Kitchen display, inventory, payment verification.
+- **Live TV (`/live`)**: Public token board without customer data.

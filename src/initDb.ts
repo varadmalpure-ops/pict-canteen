@@ -1,5 +1,5 @@
 import { menuItemsCollection } from './firebase';
-import { addDoc, getDocs, doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { addDoc, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { MenuItem } from './types';
 
@@ -90,24 +90,15 @@ export async function initializeDatabase() {
       addDoc(menuItemsCollection, item)
     );
     await Promise.all(addPromises);
-    
-    // Add temporary trial item
-    await setDoc(doc(db, 'menuItems', 'test-trial-item'), {
-      name: '🧪 Test Order (Trial)',
-      description: 'Zero-cost item to test the ordering pipeline. Will be removed later.',
-      price: 0,
-      category: 'Snacks & South Indian',
-      is_available: true,
-      isTest: true
-    });
-    
-    // Initialize token counter
-    const counterRef = doc(db, 'metadata', 'counter');
-    const counterSnap = await getDoc(counterRef);
-    if (!counterSnap.exists()) {
-      await setDoc(counterRef, { current_token: 100 });
+
+    // Remove legacy free test item if present
+    try {
+      await deleteDoc(doc(db, 'menuItems', 'test-trial-item'));
+    } catch {
+      /* ignore */
     }
-    
+
+    // Token counter is owned by Cloud Functions (clients cannot write metadata/).
     console.log('Database initialized successfully with mock menu items!');
   } catch (error) {
     console.error('Error initializing database:', error);
