@@ -99,7 +99,9 @@ export default function StudentView() {
   const [scheduledFor, setScheduledFor] = useState<string>('now');
   const [customTime, setCustomTime] = useState<string>('');
   const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('razorpay');
-  const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>('rzp_test_TVtehvAXj8IuPh');
+  const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(
+    import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TVuVkuYU2i4kWc'
+  );
 
   // Background geolocation prefetch
   useEffect(() => {
