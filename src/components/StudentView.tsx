@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import DishCard from './DishCard';
 import RushMeter from './RushMeter';
-import CheckoutModal from './CheckoutModal';
+import CartReviewView from './CartReviewView';
 import OrderTrackerModal from './OrderTrackerModal';
 
 declare global {
@@ -640,11 +640,15 @@ export default function StudentView() {
         </button>
       )}
 
-      {/* Checkout Modal */}
-      <CheckoutModal
+      {/* Full-Screen Blinkit/Swiggy-style Order Review & Checkout */}
+      <CartReviewView
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         cart={cart}
+        menu={menu}
+        onAddToCart={addToCart}
+        onRemoveFromCart={removeFromCart}
+        onClearCart={() => setCart([])}
         cartTotal={cartTotal}
         paymentProvider={paymentProvider}
         onSelectPaymentProvider={setPaymentProvider}
