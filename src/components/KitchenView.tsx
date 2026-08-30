@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, where, limit } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 import type { Order } from '../types';
@@ -58,18 +58,13 @@ export default function KitchenView() {
     } catch {}
   }, [soundEnabled]);
 
-  // Fast index query: only active tickets
+  // Fast resilient live kitchen tickets
   useEffect(() => {
-    const q = query(
-      collection(db, 'orders'),
-      where('status', 'in', ['Pending', 'PREPARING', 'READY']),
-      limit(80)
-    );
-
-    const unsub = onSnapshot(q, (snapshot) => {
-      const activeList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+    const unsub = onSnapshot(collection(db, 'orders'), (snapshot) => {
+      const activeList = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Order))
+        .filter(o => o.status === 'Pending' || o.status === 'PREPARING' || o.status === 'READY');
       
-      // Sort oldest pending first, then preparing, then ready
       activeList.sort((a, b) => {
         const timeA = (a.created_at as any)?.toMillis ? (a.created_at as any).toMillis() : 0;
         const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : 0;
@@ -83,8 +78,12 @@ export default function KitchenView() {
       setOrders(activeList);
       setLoading(false);
     }, (err) => {
-      console.error('KDS subscription error:', err);
-      setLoading(false);
+      console.warn('Orders subscription notice, falling back to displayBoard:', err);
+      onSnapshot(collection(db, 'displayBoard'), (boardSnap) => {
+        const activeList = boardSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+        setOrders(activeList);
+        setLoading(false);
+      }, () => setLoading(false));
     });
 
     return () => unsub();

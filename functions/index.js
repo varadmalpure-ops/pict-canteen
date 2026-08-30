@@ -201,6 +201,11 @@ async function writeOrderAndBoard(orderPayload) {
   batch.set(db.collection("displayBoard").doc(orderRef.id), {
     token_number: orderPayload.token_number,
     status: orderPayload.status,
+    items: orderPayload.items || [],
+    total_amount: orderPayload.total_amount || 0,
+    payment_status: orderPayload.payment_status || 'Pending',
+    scheduled_for: orderPayload.scheduled_for || null,
+    created_at: admin.firestore.FieldValue.serverTimestamp(),
     updated_at: admin.firestore.FieldValue.serverTimestamp(),
   });
   batch.set(

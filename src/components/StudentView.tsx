@@ -68,7 +68,14 @@ export default function StudentView() {
       return null;
     }
   });
-  const [queueCount, setQueueCount] = useState<number>(0);
+  const [queueCount, setQueueCount] = useState<number | null>(() => {
+    try {
+      const cached = localStorage.getItem('pict_canteen_queue_cache');
+      return cached !== null ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 

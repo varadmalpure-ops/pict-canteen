@@ -68,9 +68,7 @@ service cloud.firestore {
     // Full order documents — never creatable from clients
     match /orders/{orderId} {
       allow create: if false;
-      allow read: if request.auth != null && (
-        resource.data.uid == request.auth.uid || isAdmin()
-      );
+      allow read: if request.auth != null;
       allow update, delete: if isAdmin();
     }
 
