@@ -1,13 +1,15 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, query, where } from 'firebase/firestore';
+import { auth, db, ordersCollection } from './firebase';
 import StudentView from './components/StudentView';
 import StudentAuth from './components/StudentAuth';
 import Navbar from './components/Navbar';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import OrderTrackerModal from './components/OrderTrackerModal';
 import { ThemeProvider } from './lib/ThemeContext';
+import type { Order } from './types';
 
 const AdminView = lazy(() => import('./components/AdminView'));
 const KitchenView = lazy(() => import('./components/KitchenView'));
@@ -15,17 +17,11 @@ const LiveDisplay = lazy(() => import('./components/LiveDisplay'));
 const CanteenQRCode = lazy(() => import('./components/CanteenQRCode'));
 const StudentProfile = lazy(() => import('./components/StudentProfile'));
 
-function isBootstrapAdminEmail(email: string | null): boolean {
-  if (!email) return false;
-  const allowed = (import.meta.env.VITE_ALLOWED_ADMIN_EMAILS || 'canteen-staff@gmail.com,varadmalpure@gmail.com')
-    .split(',')
-    .map((e: string) => e.trim().toLowerCase());
-  return allowed.includes(email.toLowerCase());
-}
-
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -34,36 +30,52 @@ function App() {
         setUser(null);
         setLoading(false);
       } else if (currentUser) {
-        // Set user and unblock UI immediately for instant 0ms load
         setUser(currentUser);
         setLoading(false);
 
-        // Perform user record sync in the background
         try {
-          if (!isBootstrapAdminEmail(currentUser.email)) {
-            const userDocRef = doc(db, 'users', currentUser.uid);
-            const docSnap = await getDoc(userDocRef);
-            if (!docSnap.exists()) {
-              await setDoc(userDocRef, {
-                uid: currentUser.uid,
-                email: currentUser.email || '',
-                name: currentUser.displayName || 'Student',
-                verificationStatus: 'verified',
-                created_at: serverTimestamp()
-              }, { merge: true });
-            }
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          const docSnap = await getDoc(userDocRef);
+          if (!docSnap.exists()) {
+            await setDoc(userDocRef, {
+              uid: currentUser.uid,
+              email: currentUser.email || '',
+              name: currentUser.displayName || 'Student',
+              verificationStatus: 'pending',
+              created_at: serverTimestamp()
+            });
           }
         } catch (e) {
           console.warn('Background user sync notice:', e);
         }
       } else {
         setUser(null);
+        setActiveOrders([]);
         setLoading(false);
       }
     });
 
     return () => unsubscribe();
   }, []);
+
+  // Shared active-order listener for Navbar + tracker modal
+  useEffect(() => {
+    if (!user) {
+      setActiveOrders([]);
+      return;
+    }
+    const q = query(
+      ordersCollection,
+      where('uid', '==', user.uid),
+      where('status', 'in', ['Pending', 'PREPARING', 'READY'])
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setActiveOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order)));
+    }, () => setActiveOrders([]));
+    return () => unsub();
+  }, [user]);
+
+  const openOrdersModal = useCallback(() => setIsOrdersModalOpen(true), []);
 
   if (loading) {
     return (
@@ -81,7 +93,11 @@ function App() {
       <Router>
         <PWAInstallPrompt />
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
-          <Navbar user={user} />
+          <Navbar
+            user={user}
+            activeOrders={activeOrders}
+            onOpenOrdersModal={activeOrders.length > 0 ? openOrdersModal : undefined}
+          />
 
           <main className="flex-1 w-full">
             <Suspense fallback={
@@ -90,7 +106,7 @@ function App() {
               </div>
             }>
               <Routes>
-                <Route path="/" element={user ? <StudentView /> : <StudentAuth />} />
+                <Route path="/" element={user ? <StudentView sharedActiveOrders={activeOrders} onOpenOrdersModal={openOrdersModal} /> : <StudentAuth />} />
                 <Route path="/profile" element={user ? <StudentProfile /> : <Navigate to="/" />} />
                 <Route path="/admin" element={<AdminView />} />
                 <Route path="/kitchen" element={<KitchenView />} />
@@ -99,6 +115,12 @@ function App() {
               </Routes>
             </Suspense>
           </main>
+
+          <OrderTrackerModal
+            isOpen={isOrdersModalOpen}
+            orders={activeOrders}
+            onClose={() => setIsOrdersModalOpen(false)}
+          />
         </div>
       </Router>
     </ThemeProvider>

@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { db } from '../firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, type User } from 'firebase/auth';
+import { auth, db, updateOrderStatusFn } from '../firebase';
+import { assertIsAdmin } from '../lib/adminAuth';
 import type { Order } from '../types';
 import { 
   ChefHat, 
@@ -17,39 +17,34 @@ import {
   Search, 
   Sparkles,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  LogOut
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const updateOrderStatusFn = httpsCallable(functions, 'updateOrderStatus');
-
 export default function KitchenView() {
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      const cached = localStorage.getItem('pict_kds_orders_cache');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [loading, setLoading] = useState<boolean>(() => {
-    try {
-      return !localStorage.getItem('pict_kds_orders_cache');
-    } catch {
-      return true;
-    }
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loginError, setLoginError] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundEnabledRef = useRef(true);
+  soundEnabledRef.current = soundEnabled;
   const [searchToken, setSearchToken] = useState('');
   const [activeTab, setActiveTab] = useState<'ALL' | 'Pending' | 'PREPARING' | 'READY'>('ALL');
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
-  const prevOrderCountRef = useRef<number>(orders.length);
+  const prevOrderCountRef = useRef<number>(0);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const snapshotBackupRef = useRef<Order[]>([]);
 
-  // Play chime for incoming tickets
   const playChime = useCallback(() => {
-    if (!soundEnabled) return;
+    if (!soundEnabledRef.current) return;
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
@@ -69,15 +64,39 @@ export default function KitchenView() {
       osc.start();
       osc.stop(ctx.currentTime + 0.4);
     } catch {}
-  }, [soundEnabled]);
+  }, []);
 
-  // Fast resilient live kitchen tickets — query displayBoard (active-only, lightweight)
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'displayBoard'), (snapshot) => {
+    const unsub = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) {
+        setUser(null);
+        setAuthLoading(false);
+        return;
+      }
+      const ok = await assertIsAdmin(currentUser);
+      if (!ok) {
+        await signOut(auth);
+        setLoginError('Kitchen access requires an admin account.');
+        setUser(null);
+      } else {
+        setUser(currentUser);
+      }
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // Filtered orders query for admins — includes items for cooking tickets
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'orders'),
+      where('status', 'in', ['Pending', 'PREPARING', 'READY'])
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
       const activeList = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as Order))
-        .filter(o => o.status === 'Pending' || o.status === 'PREPARING' || o.status === 'READY');
-      
+        .map(doc => ({ id: doc.id, ...doc.data() } as Order));
+
       activeList.sort((a, b) => {
         const timeA = (a.created_at as any)?.toMillis ? (a.created_at as any).toMillis() : 0;
         const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : 0;
@@ -88,43 +107,89 @@ export default function KitchenView() {
         playChime();
       }
       prevOrderCountRef.current = activeList.length;
+      snapshotBackupRef.current = activeList;
       setOrders(activeList);
       setLoading(false);
-      try {
-        localStorage.setItem('pict_kds_orders_cache', JSON.stringify(activeList));
-      } catch {}
     }, (err) => {
-      console.warn('displayBoard subscription error:', err);
+      console.warn('Kitchen orders subscription error:', err);
       setLoading(false);
     });
 
     return () => unsub();
-  }, [playChime]);
+  }, [user, playChime]);
 
-  // Instant Optimistic Status Advance in 0ms!
   const advanceOrder = async (orderId: string, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED') => {
     setIsUpdating(orderId);
-    
-    // 0ms Optimistic UI update
+    setStatusError(null);
+    const previous = snapshotBackupRef.current;
+
     setOrders(prev => {
       const updated = nextStatus === 'COMPLETED'
         ? prev.filter(o => o.id !== orderId)
         : prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o);
-      try {
-        localStorage.setItem('pict_kds_orders_cache', JSON.stringify(updated));
-      } catch {}
       return updated;
     });
 
     try {
-      await updateOrderStatusFn({ orderId, status: nextStatus });
+      await updateOrderStatusFn({
+        orderId,
+        status: nextStatus,
+        verifyPayment: nextStatus === 'PREPARING',
+      });
     } catch (e: any) {
       console.error('Status update failed:', e);
-      alert(e?.message || 'Failed to update order status');
+      setOrders(previous);
+      setStatusError(e?.message || 'Failed to update order status');
     } finally {
       setIsUpdating(null);
     }
   };
+
+  if (authLoading) {
+    return <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center text-slate-500 font-bold text-sm">Checking kitchen access...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-6 bg-slate-50">
+        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+          <h2 className="text-xl font-black text-slate-900 mb-2">Kitchen Staff Login</h2>
+          <p className="text-xs text-slate-500 mb-6">Admin credentials required. Public Live TV is at /live.</p>
+          {loginError && <p className="text-rose-600 text-xs font-semibold mb-3">{loginError}</p>}
+          <form
+            className="space-y-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                setLoginError('');
+                await signInWithEmailAndPassword(auth, email, password);
+              } catch {
+                setLoginError('Invalid email or password');
+              }
+            }}
+          >
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Staff email" className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none" />
+            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none" />
+            <button type="submit" className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-sm">Sign In</button>
+          </form>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                setLoginError('');
+                await signInWithPopup(auth, new GoogleAuthProvider());
+              } catch {
+                setLoginError('Google sign-in failed');
+              }
+            }}
+            className="w-full mt-3 py-3 border border-slate-200 rounded-xl font-bold text-sm"
+          >
+            Continue with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
@@ -199,6 +264,13 @@ export default function KitchenView() {
           >
             <ShieldCheck size={14} className="text-blue-600" /> Manager
           </Link>
+          <button
+            type="button"
+            onClick={() => signOut(auth)}
+            className="px-3.5 py-2 bg-white hover:bg-rose-50 border border-slate-200 text-rose-600 rounded-full text-xs font-bold flex items-center gap-1.5"
+          >
+            <LogOut size={14} /> Sign out
+          </button>
 
           <Link
             to="/live"
@@ -209,6 +281,13 @@ export default function KitchenView() {
           </Link>
         </div>
       </div>
+
+      {statusError && (
+        <div className="max-w-7xl mx-auto mt-4 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-2xl text-xs font-semibold flex justify-between gap-3">
+          <span>{statusError}</span>
+          <button type="button" onClick={() => setStatusError(null)} className="font-black">Dismiss</button>
+        </div>
+      )}
 
       {/* Metrics Row */}
       <div className="max-w-7xl mx-auto grid grid-cols-3 gap-3 my-5">

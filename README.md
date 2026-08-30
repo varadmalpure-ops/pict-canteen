@@ -53,16 +53,16 @@ For local App Check, enable a debug token in the Firebase Console and uncomment 
 Call `initializeDatabase()` from `initDb.ts` while signed in as an admin (menu writes require admin). The token counter is created automatically by Cloud Functions on the first order.
 
 ## Security model
-- Orders are created only via authenticated callable `placeOrder` (server prices from `menuItems`).
-- Clients cannot write `orders` or `metadata/counter`.
-- Live TV reads `displayBoard` (token + status only — no PII).
-- ID/selfie images go to **Storage** with per-user rules; Firestore stores paths + `verificationStatus`.
-- Admin access: custom claim `admin`, `admins/{uid}`, or bootstrap emails in **Firestore rules** (not in the Vite client).
-- App Check is required on callables (`enforceAppCheck: true`).
+- Orders are created only via authenticated callable `placeOrder` (server prices from `menuItems`; Razorpay uses stored `paymentIntents` only).
+- Clients cannot write `orders` or `metadata/counter`. Order reads are owner-or-admin only.
+- Live TV reads `displayBoard` (token + status only). Kitchen `/kitchen` requires admin login and reads full tickets from `orders`.
+- New accounts start as `verificationStatus: pending`. Registration expects `@pict.edu` / `@pict.edu.in`.
+- Admin access: custom claim `admin`, `admins/{uid}`, or bootstrap emails in **rules/functions only** (not in the Vite client).
+- App Check is required on callables (`enforceAppCheck: true`). Set `VITE_RECAPTCHA_SITE_KEY`.
 
 ## Features
 - **Student View (`/`)**: Cart → server-validated order → token (e.g. `#A-104`).
-- **Bill Splitting**: Equal or custom split UX before payment.
-- **Payments**: Razorpay (signature-verified) when configured; otherwise UPI + UTR with staff verification.
-- **Admin View (`/admin`)**: Kitchen display, inventory, payment verification.
+- **Payments**: Razorpay (signature-verified) when configured; otherwise Pay at Counter with staff verification.
+- **Admin View (`/admin`)**: Inventory, analytics, order management.
+- **Kitchen (`/kitchen`)**: Auth-gated KDS with full ticket details.
 - **Live TV (`/live`)**: Public token board without customer data.

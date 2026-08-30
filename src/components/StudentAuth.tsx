@@ -15,9 +15,16 @@ export default function StudentAuth() {
     e.preventDefault();
     setError('');
 
-    if (!isLogin && password.length < 6) {
-      setError('Password must be at least 6 characters.');
-      return;
+    if (!isLogin) {
+      const normalized = email.trim().toLowerCase();
+      if (!normalized.endsWith('@pict.edu') && !normalized.endsWith('@pict.edu.in')) {
+        setError('Register with your PICT email (@pict.edu or @pict.edu.in).');
+        return;
+      }
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters.');
+        return;
+      }
     }
 
     setLoading(true);
@@ -40,10 +47,18 @@ export default function StudentAuth() {
       setLoading(true);
       setError('');
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const googleEmail = (result.user.email || '').toLowerCase();
+      if (!isLogin && googleEmail && !googleEmail.endsWith('@pict.edu') && !googleEmail.endsWith('@pict.edu.in')) {
+        await result.user.delete().catch(() => auth.signOut());
+        setError('Register with your PICT Google account (@pict.edu / @pict.edu.in).');
+        setLoading(false);
+        return;
+      }
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Google Authentication failed.');
+    } finally {
       setLoading(false);
     }
   };

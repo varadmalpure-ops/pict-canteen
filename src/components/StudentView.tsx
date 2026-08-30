@@ -48,7 +48,22 @@ function loadRazorpayScript(): Promise<boolean> {
   });
 }
 
-export default function StudentView() {
+type StudentViewProps = {
+  sharedActiveOrders?: Order[];
+  onOpenOrdersModal?: () => void;
+};
+
+function cacheWrite(key: string, value: unknown) {
+  try {
+    // Defer large JSON writes off the critical path
+    const payload = JSON.stringify(value);
+    queueMicrotask(() => {
+      try { localStorage.setItem(key, payload); } catch { /* quota */ }
+    });
+  } catch { /* ignore */ }
+}
+
+export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: StudentViewProps = {}) {
   // Instant cache-first menu initialization for 0ms visual render
   const [menu, setMenu] = useState<MenuItem[]>(() => {
     try {
@@ -116,13 +131,12 @@ export default function StudentView() {
   const [scheduledFor, setScheduledFor] = useState<string>('now');
   const [customTime, setCustomTime] = useState<string>('');
   const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('pay_at_counter');
-  const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(
-    import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TVuVkuYU2i4kWc'
-  );
+  const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(null);
+  const [orderNotice, setOrderNotice] = useState<string | null>(null);
+  const paymentConfigLoaded = useRef(false);
 
-  // Background geolocation prefetch & Razorpay script preload
+  // Background geolocation prefetch (no campus-coord spoof fallback)
   useEffect(() => {
-    loadRazorpayScript();
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -132,7 +146,7 @@ export default function StudentView() {
           });
         },
         () => {},
-        { enableHighAccuracy: false, timeout: 3000, maximumAge: 600000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60_000 }
       );
     }
   }, []);
@@ -153,9 +167,7 @@ export default function StudentView() {
       });
       setMenu(items);
       setLoading(false);
-      try {
-        localStorage.setItem('pict_canteen_menu_cache', JSON.stringify(items));
-      } catch {}
+      cacheWrite('pict_canteen_menu_cache', items);
     }, () => setLoading(false));
 
     return () => unsubscribeMenu();
@@ -170,7 +182,7 @@ export default function StudentView() {
     
     async function loadPastOrders() {
       try {
-        const pastOrdersQ = query(ordersCollection, where('uid', '==', auth.currentUser!.uid), limit(15));
+        const pastOrdersQ = query(ordersCollection, where('uid', '==', auth.currentUser!.uid), limit(5));
         const pastOrdersSnap = await getDocs(pastOrdersQ);
         const itemFreq: Record<string, number> = {};
         const pastList: Order[] = [];
@@ -185,9 +197,7 @@ export default function StudentView() {
         const sortedIds = Object.keys(itemFreq).sort((a, b) => itemFreq[b] - itemFreq[a]).slice(0, 3);
         const recs = menu.filter(i => sortedIds.includes(i.id) && i.is_available);
         setRecommendations(recs);
-        try {
-          localStorage.setItem('pict_recommendations_cache', JSON.stringify(recs));
-        } catch {}
+        cacheWrite('pict_recommendations_cache', recs);
 
         if (pastList.length > 0) {
           pastList.sort((a, b) => {
@@ -197,9 +207,12 @@ export default function StudentView() {
           });
           const latest = pastList[0];
           setLastOrder(latest);
-          try {
-            localStorage.setItem('pict_last_order_cache', JSON.stringify(latest));
-          } catch {}
+          cacheWrite('pict_last_order_cache', {
+            id: latest.id,
+            token_number: latest.token_number,
+            total_amount: latest.total_amount,
+            items: latest.items,
+          });
         }
       } catch (e) {
         console.error('Past orders error:', e);
@@ -213,25 +226,29 @@ export default function StudentView() {
     const qQueue = query(displayBoardCollection, where('status', 'in', ['Pending', 'PREPARING']));
     const unsubQueue = onSnapshot(qQueue, (snap) => {
       setQueueCount(snap.size);
-      try { localStorage.setItem('pict_canteen_queue_cache', JSON.stringify(snap.size)); } catch {}
+      cacheWrite('pict_canteen_queue_cache', snap.size);
     }, () => {});
     return () => unsubQueue();
   }, []);
 
-  // Fetch payment config
-  const fetchPaymentConfig = useCallback(async () => {
+  // Fetch payment config once (no hardcoded Razorpay keys)
+  const fetchPaymentConfig = useCallback(async (force = false) => {
+    if (paymentConfigLoaded.current && !force) return;
     try {
       const res = await getPaymentConfigFn();
       const data = res.data as { provider: PaymentProvider; razorpayKeyId: string | null };
-      if (data && data.provider) {
-        setPaymentProvider(data.provider);
-      }
-      if (data && data.razorpayKeyId) {
+      if (data?.provider === 'razorpay' && data.razorpayKeyId) {
+        setPaymentProvider('razorpay');
         setRazorpayKeyId(data.razorpayKeyId);
+        loadRazorpayScript();
+      } else {
+        setPaymentProvider('pay_at_counter');
+        setRazorpayKeyId(null);
       }
+      paymentConfigLoaded.current = true;
     } catch {
-      setPaymentProvider('razorpay');
-      setRazorpayKeyId('rzp_test_TVtehvAXj8IuPh');
+      setPaymentProvider('pay_at_counter');
+      setRazorpayKeyId(null);
     }
   }, []);
 
@@ -239,9 +256,16 @@ export default function StudentView() {
     fetchPaymentConfig();
   }, [fetchPaymentConfig]);
 
-  // Recover active orders
+  // Prefer App-shared active orders when provided (avoids duplicate listeners)
   useEffect(() => {
-    if (!auth.currentUser) return;
+    if (!sharedActiveOrders) return;
+    setActiveOrders(sharedActiveOrders);
+    setActiveOrderIds(sharedActiveOrders.map((o) => o.id));
+  }, [sharedActiveOrders]);
+
+  // Recover active orders only when App does not share them
+  useEffect(() => {
+    if (sharedActiveOrders || !auth.currentUser) return;
     (async () => {
       try {
         const q = query(
@@ -258,15 +282,17 @@ export default function StudentView() {
         console.error('Order recovery failed:', err);
       }
     })();
-  }, []);
+  }, [sharedActiveOrders]);
 
-  // Sync active orders snapshot — use ref to prevent listener churn
+  // Sync active orders snapshot — skip when App already shares live orders
   const activeOrderIdsRef = useRef(activeOrderIds);
   activeOrderIdsRef.current = activeOrderIds;
 
   const activeOrderIdsKey = activeOrderIds.slice(0, 10).sort().join(',');
 
   useEffect(() => {
+    if (sharedActiveOrders) return;
+
     const ids = activeOrderIdsRef.current;
     if (ids.length === 0) {
       setActiveOrders([]);
@@ -284,7 +310,7 @@ export default function StudentView() {
       orders.forEach(orderData => {
         if (orderData.status === 'COMPLETED' || orderData.status === 'CANCELLED') {
           if (orderData.status === 'CANCELLED') {
-            alert(`Your order ${orderData.token_number} was cancelled by the canteen. Please collect your refund from the counter.`);
+            setOrderNotice(`Order ${orderData.token_number} was cancelled. Collect any refund at the counter.`);
           }
           const idx = nextActiveIds.indexOf(orderData.id);
           if (idx > -1) {
@@ -303,7 +329,7 @@ export default function StudentView() {
               try { navigator.vibrate([200, 100, 200]); } catch {}
             }
             if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification('Your food is ready! 🔔', {
+              new Notification('Your food is ready!', {
                 body: `Token ${orderData.token_number} is ready for pickup at the counter!`,
                 icon: '/pwa-192x192.png'
               });
@@ -321,7 +347,7 @@ export default function StudentView() {
 
     return () => unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrderIdsKey]);
+  }, [activeOrderIdsKey, sharedActiveOrders]);
 
   const repeatLastOrder = useCallback(() => {
     if (!lastOrder || !lastOrder.items || lastOrder.items.length === 0) return;
@@ -341,7 +367,7 @@ export default function StudentView() {
     if (itemsToAdd.length > 0) {
       setCart(itemsToAdd);
     } else {
-      alert('The items from your previous order are currently sold out.');
+      setOrderNotice('The items from your previous order are currently sold out.');
     }
   }, [lastOrder, menu]);
 
@@ -360,12 +386,34 @@ export default function StudentView() {
     setCart(prev => prev.map(i => i.itemId === itemId ? { ...i, quantity: i.quantity - 1 } : i).filter(i => i.quantity > 0));
   }, []);
 
-  const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + (item.price * item.quantity), 0), [cart]);
+  const totalCartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
   const scheduleValue = scheduledFor === 'now' ? null : (scheduledFor === 'custom' ? (customTime ? formatTime12h(customTime) : null) : scheduledFor);
 
+  const ensureLocation = async () => {
+    if (coords) return coords;
+    return new Promise<{ latitude: number; longitude: number }>((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation is required to order from campus.'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const next = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+          setCoords(next);
+          resolve(next);
+        },
+        () => reject(new Error('Enable location access to verify you are near PICT campus.')),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+  };
+
   const submitOrder = async (paymentPayload: Record<string, unknown>) => {
-    const position = coords || { latitude: 18.4584975, longitude: 73.8512198 };
+    const position = await ensureLocation();
 
     const items = cart.map(item => ({
       itemId: item.itemId,
@@ -394,13 +442,11 @@ export default function StudentView() {
 
     setIsProcessingPayment(true);
     try {
-      const position = coords || { latitude: 18.4584975, longitude: 73.8512198 };
-      setCoords(position);
+      const position = await ensureLocation();
 
-      // ₹0 Sample Test or Pay at Counter
       if (cartTotal === 0 || paymentProvider === 'pay_at_counter') {
         await submitOrder({
-          payment_method: cartTotal === 0 ? 'FREE_SAMPLE_TEST' : 'PAY_AT_COUNTER',
+          payment_method: 'PAY_AT_COUNTER',
         });
         return;
       }
@@ -435,7 +481,6 @@ export default function StudentView() {
             prefill: {
               name: auth.currentUser?.displayName || 'Student',
               email: auth.currentUser?.email || '',
-              contact: '9999999999'
             },
             theme: { color: '#4F46E5' },
             handler: async (response: {
@@ -448,7 +493,6 @@ export default function StudentView() {
                   razorpay_order_id: response.razorpay_order_id,
                   razorpay_payment_id: response.razorpay_payment_id,
                   razorpay_signature: response.razorpay_signature,
-                  payment_method: 'RAZORPAY',
                 });
                 resolve();
               } catch (err) {
@@ -462,11 +506,13 @@ export default function StudentView() {
           });
           rzp.open();
         });
+      } else {
+        throw new Error('Online payment is not configured. Choose Pay at Counter.');
       }
     } catch (error: any) {
       console.error('Order placement failed:', error);
       const msg = error?.message || error?.code || 'Failed to place order. Please try again.';
-      alert(typeof msg === 'string' ? msg : 'Failed to place order.');
+      setOrderNotice(typeof msg === 'string' ? msg : 'Failed to place order.');
     } finally {
       setIsProcessingPayment(false);
     }
@@ -550,6 +596,13 @@ export default function StudentView() {
 
       {/* Live Rush Meter */}
       <RushMeter queueCount={queueCount} />
+
+      {orderNotice && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl text-xs font-semibold flex justify-between gap-3">
+          <span>{orderNotice}</span>
+          <button type="button" onClick={() => setOrderNotice(null)} className="text-amber-700 font-black">Dismiss</button>
+        </div>
+      )}
 
       {/* 1-Tap Repeat Order Banner */}
       {lastOrder && lastOrder.items && (
@@ -643,7 +696,6 @@ export default function StudentView() {
           <div className="max-w-md mx-auto pointer-events-auto">
             <button
               onClick={() => {
-                fetchPaymentConfig();
                 setIsPaymentModalOpen(true);
               }}
               className="w-full bg-slate-900 hover:bg-black text-white rounded-full p-3.5 px-5 flex items-center justify-between shadow-2xl shadow-slate-900/30 google-touch google-ripple transition-all cursor-pointer"
@@ -674,7 +726,7 @@ export default function StudentView() {
       {/* Floating Active Orders Badge */}
       {activeOrders.length > 0 && !isStatusModalOpen && (
         <button
-          onClick={() => setIsStatusModalOpen(true)}
+          onClick={() => (onOpenOrdersModal ? onOpenOrdersModal() : setIsStatusModalOpen(true))}
           className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl shadow-blue-600/40 flex items-center justify-center z-40 google-touch google-ripple transition-all cursor-pointer"
           aria-label="View active orders"
         >

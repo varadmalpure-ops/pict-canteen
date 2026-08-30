@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, deleteDoc, getDoc, setDoc, limit } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, deleteDoc, setDoc, limit } from 'firebase/firestore';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, type User } from 'firebase/auth';
 import { db, menuItemsCollection, auth, updateOrderStatusFn } from '../firebase';
+import { assertIsAdmin } from '../lib/adminAuth';
 import type { MenuItem, Order, OrderStatus } from '../types';
 import { 
   ShieldCheck, 
@@ -18,35 +19,8 @@ import {
   Search 
 } from 'lucide-react';
 
-function isBootstrapAdminEmail(email: string | null): boolean {
-  if (!email) return false;
-  const allowed = (import.meta.env.VITE_ALLOWED_ADMIN_EMAILS || 'canteen-staff@gmail.com,varadmalpure@gmail.com')
-    .split(',')
-    .map((e: string) => e.trim().toLowerCase());
-  return allowed.includes(email.toLowerCase());
-}
-
-async function assertIsAdmin(currentUser: User): Promise<boolean> {
-  if (isBootstrapAdminEmail(currentUser.email)) {
-    return true;
-  }
-  try {
-    const adminSnap = await getDoc(doc(db, 'admins', currentUser.uid));
-    return adminSnap.exists();
-  } catch {
-    return false;
-  }
-}
-
 export default function AdminView() {
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      const cached = localStorage.getItem('pict_admin_orders_cache');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [orders, setOrders] = useState<Order[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>(() => {
     try {
       const cached = localStorage.getItem('pict_canteen_menu_cache');
@@ -102,13 +76,9 @@ export default function AdminView() {
   useEffect(() => {
     if (!user) return;
 
-    const q = query(collection(db, 'orders'), orderBy('created_at', 'desc'), limit(200));
+    const q = query(collection(db, 'orders'), orderBy('created_at', 'desc'), limit(50));
     const unsubOrders = onSnapshot(q, (snapshot) => {
-      const allOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-      setOrders(allOrders);
-      try {
-        localStorage.setItem('pict_admin_orders_cache', JSON.stringify(allOrders));
-      } catch {}
+      setOrders(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
     });
 
     const unsubMenu = onSnapshot(menuItemsCollection, (snapshot) => {
