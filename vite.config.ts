@@ -21,7 +21,18 @@ export default defineConfig({
       input: {
         main: './index.html',
         admin: './admin.html'
+      },
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/firebase/')) {
+            return 'firebase-vendor';
+          }
+          if (id.includes('node_modules/lucide-react/')) {
+            return 'lucide-icons';
+          }
+        }
       }
-    }
+    },
+    chunkSizeWarningLimit: 600
   }
 })

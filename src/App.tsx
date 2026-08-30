@@ -1,17 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import StudentView from './components/StudentView';
-import AdminView from './components/AdminView';
-import KitchenView from './components/KitchenView';
-import CanteenQRCode from './components/CanteenQRCode';
-import LiveDisplay from './components/LiveDisplay';
-import PWAInstallPrompt from './components/PWAInstallPrompt';
 import StudentAuth from './components/StudentAuth';
-import StudentProfile from './components/StudentProfile';
 import Navbar from './components/Navbar';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
+
+const AdminView = lazy(() => import('./components/AdminView'));
+const KitchenView = lazy(() => import('./components/KitchenView'));
+const LiveDisplay = lazy(() => import('./components/LiveDisplay'));
+const CanteenQRCode = lazy(() => import('./components/CanteenQRCode'));
+const StudentProfile = lazy(() => import('./components/StudentProfile'));
 
 function isBootstrapAdminEmail(email: string | null): boolean {
   if (!email) return false;
@@ -84,14 +85,20 @@ function App() {
         <Navbar user={user} />
 
         <main className="flex-1 w-full">
-          <Routes>
-            <Route path="/" element={user ? <StudentView /> : <StudentAuth />} />
-            <Route path="/profile" element={user ? <StudentProfile /> : <Navigate to="/" />} />
-            <Route path="/admin" element={<AdminView />} />
-            <Route path="/kitchen" element={<KitchenView />} />
-            <Route path="/display" element={<CanteenQRCode url={window.location.origin} />} />
-            <Route path="/live" element={<LiveDisplay />} />
-          </Routes>
+          <Suspense fallback={
+            <div className="flex items-center justify-center p-12 text-slate-400 font-semibold text-xs">
+              Loading screen...
+            </div>
+          }>
+            <Routes>
+              <Route path="/" element={user ? <StudentView /> : <StudentAuth />} />
+              <Route path="/profile" element={user ? <StudentProfile /> : <Navigate to="/" />} />
+              <Route path="/admin" element={<AdminView />} />
+              <Route path="/kitchen" element={<KitchenView />} />
+              <Route path="/display" element={<CanteenQRCode url={window.location.origin} />} />
+              <Route path="/live" element={<LiveDisplay />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </Router>

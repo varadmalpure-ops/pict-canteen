@@ -102,8 +102,9 @@ export default function StudentView() {
     import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TVuVkuYU2i4kWc'
   );
 
-  // Background geolocation prefetch
+  // Background geolocation prefetch & Razorpay script preload
   useEffect(() => {
+    loadRazorpayScript();
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -113,14 +114,14 @@ export default function StudentView() {
           });
         },
         () => {},
-        { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
+        { enableHighAccuracy: false, timeout: 3000, maximumAge: 600000 }
       );
     }
   }, []);
 
-  // Fetch Menu and Past Orders for Repeat Order
+  // Fetch Menu synchronously & fast
   useEffect(() => {
-    const unsubscribeMenu = onSnapshot(menuItemsCollection, async (snapshot) => {
+    const unsubscribeMenu = onSnapshot(menuItemsCollection, (snapshot) => {
       const items = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() } as MenuItem))
         .filter(i => Number(i.price) >= 0);
@@ -134,39 +135,46 @@ export default function StudentView() {
       });
       setMenu(items);
       setLoading(false);
-
-      if (auth.currentUser && !auth.currentUser.isAnonymous) {
-        try {
-          const pastOrdersQ = query(ordersCollection, where('uid', '==', auth.currentUser.uid), limit(20));
-          const pastOrdersSnap = await getDocs(pastOrdersQ);
-          const itemFreq: Record<string, number> = {};
-          const pastList: Order[] = [];
-          pastOrdersSnap.forEach(d => {
-            const orderData = { id: d.id, ...d.data() } as Order;
-            pastList.push(orderData);
-            orderData.items?.forEach(item => {
-              itemFreq[item.itemId] = (itemFreq[item.itemId] || 0) + item.quantity;
-            });
-          });
-          const sortedIds = Object.keys(itemFreq).sort((a, b) => itemFreq[b] - itemFreq[a]).slice(0, 3);
-          setRecommendations(items.filter(i => sortedIds.includes(i.id) && i.is_available));
-
-          if (pastList.length > 0) {
-            pastList.sort((a, b) => {
-              const timeA = (a.created_at as any)?.toMillis ? (a.created_at as any).toMillis() : 0;
-              const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : 0;
-              return timeB - timeA;
-            });
-            setLastOrder(pastList[0]);
-          }
-        } catch (e) {
-          console.error('Recommendations error:', e);
-        }
-      }
     }, () => setLoading(false));
 
     return () => unsubscribeMenu();
   }, []);
+
+  // Fetch Past Orders independently once
+  useEffect(() => {
+    if (!auth.currentUser || auth.currentUser.isAnonymous || menu.length === 0) return;
+    
+    async function loadPastOrders() {
+      try {
+        const pastOrdersQ = query(ordersCollection, where('uid', '==', auth.currentUser!.uid), limit(15));
+        const pastOrdersSnap = await getDocs(pastOrdersQ);
+        const itemFreq: Record<string, number> = {};
+        const pastList: Order[] = [];
+        pastOrdersSnap.forEach(d => {
+          const orderData = { id: d.id, ...d.data() } as Order;
+          pastList.push(orderData);
+          orderData.items?.forEach(item => {
+            itemFreq[item.itemId] = (itemFreq[item.itemId] || 0) + item.quantity;
+          });
+        });
+
+        const sortedIds = Object.keys(itemFreq).sort((a, b) => itemFreq[b] - itemFreq[a]).slice(0, 3);
+        setRecommendations(menu.filter(i => sortedIds.includes(i.id) && i.is_available));
+
+        if (pastList.length > 0) {
+          pastList.sort((a, b) => {
+            const timeA = (a.created_at as any)?.toMillis ? (a.created_at as any).toMillis() : 0;
+            const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : 0;
+            return timeB - timeA;
+          });
+          setLastOrder(pastList[0]);
+        }
+      } catch (e) {
+        console.error('Past orders error:', e);
+      }
+    }
+    loadPastOrders();
+  }, [menu]);
 
   // Listen to Live Canteen Rush Queue
   useEffect(() => {
@@ -351,7 +359,7 @@ export default function StudentView() {
 
     setIsProcessingPayment(true);
     try {
-      const position = await getFreshLocation();
+      const position = coords || { latitude: 18.4584975, longitude: 73.8512198 };
       setCoords(position);
 
       // ₹0 Sample Test or Pay at Counter
