@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { auth } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { Loader2, Camera, User, Lock, Mail, Calendar, CreditCard, CheckCircle2, X, Info } from 'lucide-react';
+import { Loader2, Camera, User, Lock, Mail, Calendar, CreditCard, X, Info } from 'lucide-react';
 
 export default function StudentAuth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -218,211 +218,257 @@ export default function StudentAuth() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] bg-gray-50/50 p-4 sm:p-6 font-sans">
-      <div className="w-full max-w-lg bg-white p-6 sm:p-10 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100/60 transition-all duration-300">
-        <div className="text-center mb-10">
-          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-500/30 transform -rotate-3 hover:rotate-0 transition-transform duration-300">
-            <User size={40} strokeWidth={1.5} />
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] bg-gradient-to-b from-gray-50 to-gray-100/60 p-4 sm:p-6 font-sans">
+      <div className="w-full max-w-md bg-white p-6 sm:p-8 rounded-[2rem] shadow-xl shadow-gray-200/50 border border-gray-100 transition-all duration-300">
+        
+        {/* Brand Header */}
+        <div className="text-center mb-6">
+          <div className="w-14 h-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-md shadow-blue-500/25">
+            <span className="font-black text-2xl tracking-tighter">P</span>
           </div>
-          <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-            {isLogin ? 'Welcome Back' : 'Create Account'}
+          <h2 className="text-2xl font-black text-gray-900 tracking-tight">
+            PICT Canteen Portal
           </h2>
-          <p className="text-gray-500 mt-3 text-sm sm:text-base px-4">
-            {isLogin ? 'Sign in to access your PICT CANTEEN dashboard.' : 'Register with your PICT ID. Photos are stored securely for staff review.'}
+          <p className="text-gray-500 text-xs font-medium mt-1">
+            {isLogin ? 'Sign in to order food, track tokens, and skip the line' : 'Create your verified student canteen pass'}
           </p>
         </div>
 
+        {/* Tab Switcher */}
+        <div className="flex bg-gray-100 p-1 rounded-2xl mb-6">
+          <button
+            type="button"
+            onClick={() => { setIsLogin(true); setError(''); }}
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${
+              isLogin ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => { setIsLogin(false); setError(''); }}
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${
+              !isLogin ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Register Student
+          </button>
+        </div>
+
         {error && (
-          <div className="mb-8 p-4 bg-red-50/80 backdrop-blur-sm text-red-600 rounded-2xl text-sm font-medium border border-red-100 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-            <Info size={18} className="mt-0.5 flex-shrink-0" />
-            <p>{error}</p>
+          <div className="mb-6 p-3.5 bg-red-50 text-red-600 rounded-2xl text-xs font-medium border border-red-100 flex items-start gap-2.5 animate-in fade-in">
+            <Info size={16} className="mt-0.5 shrink-0 text-red-500" />
+            <p className="leading-relaxed">{error}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-gray-700 ml-1">Email Address</label>
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-blue-600">
-                <Mail size={18} className="text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-              </div>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full pl-11 pr-4 py-3.5 bg-gray-50/50 rounded-2xl border border-gray-200 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all"
-                placeholder="student@gmail.com"
-              />
-            </div>
-          </div>
+        {isLogin ? (
+          /* Sign In Form */
+          <div className="space-y-4">
+            {/* 1-Tap Google Sign In */}
+            <button
+              type="button"
+              onClick={handleGoogleAuth}
+              disabled={loading}
+              className="w-full py-3.5 px-4 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-2xl font-bold text-sm flex items-center justify-center gap-3 shadow-sm hover:shadow transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+              Continue with Google
+            </button>
 
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-end ml-1 mb-1">
-              <label className="text-sm font-semibold text-gray-700">
-                {isLogin ? 'Password' : 'Create a Password'}
-              </label>
+            <div className="relative flex items-center justify-center my-4">
+              <div className="border-t border-gray-200 w-full" />
+              <span className="bg-white px-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider shrink-0">or with email</span>
+              <div className="border-t border-gray-200 w-full" />
             </div>
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Lock size={18} className="text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-              </div>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full pl-11 pr-4 py-3.5 bg-gray-50/50 rounded-2xl border border-gray-200 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all"
-                placeholder="••••••••"
-              />
-            </div>
-            {!isLogin && (
-              <p className="text-[11px] font-medium text-gray-400 ml-1">
-                Must be at least 8 characters with 1 uppercase, 1 lowercase, 1 number, and 1 special character.
-              </p>
-            )}
-          </div>
 
-          {!isLogin && (
-            <div className="pt-6 mt-6 border-t border-gray-100 space-y-6">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="h-6 w-1 bg-blue-600 rounded-full"></div>
-                <h3 className="text-lg font-bold text-gray-900">Student Verification</h3>
-              </div>
-              <p className="text-xs text-gray-500">
-                ID and selfie are uploaded to secure storage for canteen staff review. This app does not perform automatic face matching.
-              </p>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-gray-700 ml-1">PNR Number</label>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-gray-600 ml-1">Email</label>
                 <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <CreditCard size={18} className="text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-                  </div>
+                  <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:border-blue-500 outline-none text-sm font-medium transition-all"
+                    placeholder="student@gmail.com"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-gray-600 ml-1">Password</label>
+                <div className="relative group">
+                  <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:border-blue-500 outline-none text-sm font-medium transition-all"
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 bg-gray-900 hover:bg-black text-white rounded-2xl font-bold text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
+              >
+                {loading ? <Loader2 size={18} className="animate-spin" /> : 'Sign In'}
+              </button>
+            </form>
+          </div>
+        ) : (
+          /* Register Form */
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-gray-600 ml-1">Email</label>
+              <div className="relative group">
+                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:border-blue-500 outline-none text-sm font-medium transition-all"
+                  placeholder="student@gmail.com"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-gray-600 ml-1">Password</label>
+              <div className="relative group">
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:border-blue-500 outline-none text-sm font-medium transition-all"
+                  placeholder="Min 8 chars, 1 capital, 1 symbol"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-gray-600 ml-1">PNR / Roll No</label>
+                <div className="relative group">
+                  <CreditCard size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
                   <input
                     type="text"
                     required
                     value={pnr}
                     onChange={e => setPnr(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3.5 bg-gray-50/50 rounded-2xl border border-gray-200 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all uppercase"
-                    placeholder="e.g. 120B0000"
+                    className="w-full pl-9 pr-3 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:border-blue-500 outline-none text-xs font-bold uppercase transition-all"
+                    placeholder="e.g. 120B1020"
                   />
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-gray-700 ml-1">Date of Birth</label>
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-gray-600 ml-1">Date of Birth</label>
                 <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Calendar size={18} className="text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-                  </div>
+                  <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
                   <input
                     type="date"
                     required
                     value={dob}
                     onChange={e => setDob(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3.5 bg-gray-50/50 rounded-2xl border border-gray-200 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all"
+                    className="w-full pl-9 pr-2 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:border-blue-500 outline-none text-xs font-medium transition-all"
                   />
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-gray-700 ml-1">College ID photo</label>
-                {photoBase64 ? (
-                  <div className="relative group overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
-                    <img src={photoBase64} alt="ID" className="w-full h-48 object-cover" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <button type="button" onClick={() => setPhotoBase64('')} className="bg-white text-gray-900 px-4 py-2 rounded-full font-bold text-sm">
+            {/* ID & Selfie Verification Box */}
+            <div className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-700">Student ID & Selfie</span>
+                <span className="text-[10px] text-gray-400 font-medium">For counter pickup verification</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {/* ID Photo */}
+                <div>
+                  {photoBase64 ? (
+                    <div className="relative rounded-xl overflow-hidden border border-gray-200 h-24 bg-white">
+                      <img src={photoBase64} alt="ID" className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => setPhotoBase64('')} className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded-md font-bold">
                         Retake
                       </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex gap-3">
-                    <button type="button" onClick={() => startCamera('ID')} className="flex-1 bg-gray-900 text-white rounded-2xl p-5 flex flex-col items-center gap-2">
-                      <Camera size={26} />
-                      <span className="font-semibold text-sm">Open Camera</span>
-                    </button>
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="flex-1 bg-white border-2 border-dashed border-gray-200 rounded-2xl p-5 flex flex-col items-center gap-2 text-gray-500">
-                      <User size={26} />
-                      <span className="font-semibold text-sm">Upload File</span>
-                    </button>
-                  </div>
-                )}
-                <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/png, image/jpeg, image/jpg, image/webp" className="hidden" />
-              </div>
+                  ) : (
+                    <div className="flex flex-col gap-1.5">
+                      <button type="button" onClick={() => startCamera('ID')} className="h-16 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-700 hover:bg-gray-50 transition-colors">
+                        <Camera size={18} className="text-blue-600" />
+                        <span className="text-[10px] font-bold mt-1">Scan ID</span>
+                      </button>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="text-[10px] text-gray-500 text-center font-semibold hover:text-blue-600">
+                        or Upload File
+                      </button>
+                    </div>
+                  )}
+                  <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/png, image/jpeg, image/jpg, image/webp" className="hidden" />
+                </div>
 
-              <div className="space-y-1.5 pt-2">
-                <label className="text-sm font-semibold text-gray-700 ml-1">Live selfie (for staff review)</label>
-                {!photoBase64 ? (
-                  <div className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-center text-sm text-gray-500">
-                    Scan your ID card first.
-                  </div>
-                ) : selfieBase64 ? (
-                  <div className="w-full space-y-4">
-                    <div className="flex gap-3 justify-center">
-                      <img src={photoBase64} alt="ID" className="w-24 h-24 rounded-2xl object-cover border" />
-                      <img src={selfieBase64} alt="Selfie" className="w-24 h-24 rounded-2xl object-cover border" />
+                {/* Selfie */}
+                <div>
+                  {selfieBase64 ? (
+                    <div className="relative rounded-xl overflow-hidden border border-gray-200 h-24 bg-white">
+                      <img src={selfieBase64} alt="Selfie" className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => setSelfieBase64('')} className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded-md font-bold">
+                        Retake
+                      </button>
                     </div>
-                    <div className="flex items-center justify-center gap-2 text-emerald-700 font-bold text-sm">
-                      <CheckCircle2 size={18} /> Photos ready for staff review
-                    </div>
-                    <button type="button" onClick={() => setSelfieBase64('')} className="w-full py-3 bg-gray-100 text-gray-700 rounded-2xl font-bold text-sm">
-                      Retake selfie
+                  ) : (
+                    <button type="button" onClick={() => startCamera('SELFIE')} className="h-16 w-full bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-700 hover:bg-gray-50 transition-colors">
+                      <User size={18} className="text-purple-600" />
+                      <span className="text-[10px] font-bold mt-1">Take Selfie</span>
                     </button>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => startCamera('SELFIE')} className="w-full bg-blue-50 border border-blue-200 text-blue-700 rounded-2xl p-6 flex flex-col items-center gap-3">
-                    <Camera size={24} />
-                    <span className="font-bold text-sm">Take Live Selfie</span>
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
-          )}
 
-          <div className="pt-6 mt-6 border-t border-gray-100 space-y-3">
-            <button
-              type="submit"
-              disabled={loading || (!isLogin && !registrationReady)}
-              className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold text-lg hover:bg-black transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {loading ? <Loader2 size={24} className="animate-spin" /> : (isLogin ? 'Sign In with Email' : 'Create Account')}
-            </button>
+            <div className="space-y-2 pt-2">
+              <button
+                type="submit"
+                disabled={loading || !registrationReady}
+                className="w-full py-3.5 bg-gray-900 hover:bg-black text-white rounded-2xl font-bold text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {loading ? <Loader2 size={18} className="animate-spin" /> : 'Create Account'}
+              </button>
 
-            <button
-              type="button"
-              onClick={handleGoogleAuth}
-              disabled={loading || (!isLogin && !registrationReady)}
-              className="w-full py-4 bg-white border-2 border-gray-200 text-gray-800 rounded-2xl font-bold text-lg hover:border-gray-300 hover:bg-gray-50 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-            >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6" />
-              {isLogin ? 'Continue with Google' : 'Register with Google'}
-            </button>
-          </div>
-        </form>
-
-        <div className="mt-8 text-center bg-gray-50 rounded-2xl p-4">
-          <p className="text-sm text-gray-500 font-medium">
-            {isLogin ? "Don't have an account yet?" : 'Already verified?'}
-          </p>
-          <button
-            onClick={() => { setIsLogin(!isLogin); setError(''); }}
-            className="mt-1 text-blue-600 font-bold hover:text-blue-800 transition-colors text-sm"
-          >
-            {isLogin ? 'Create a new account' : 'Sign in to your account'}
-          </button>
-        </div>
+              <button
+                type="button"
+                onClick={handleGoogleAuth}
+                disabled={loading || !registrationReady}
+                className="w-full py-3 bg-white border border-gray-200 text-gray-700 rounded-2xl font-bold text-xs hover:bg-gray-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-4 h-4" />
+                Register with Google
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
+      {/* Camera Capture Fullscreen Overlay */}
       {isCameraActive && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
           <div className="flex-1 relative">
             <video ref={videoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover" />
             <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-center text-white z-10">
-              <span className="font-bold text-lg">{cameraMode === 'ID' ? 'Scan ID Card' : 'Take Selfie'}</span>
-              <button type="button" onClick={stopCamera} className="p-3 bg-white/10 rounded-full">
-                <X size={24} />
+              <span className="font-bold text-base">{cameraMode === 'ID' ? 'Scan College ID Card' : 'Take Verification Selfie'}</span>
+              <button type="button" onClick={stopCamera} className="p-2.5 bg-white/10 rounded-full">
+                <X size={20} />
               </button>
             </div>
             {cameraMode === 'ID' && (
@@ -431,8 +477,8 @@ export default function StudentAuth() {
               </div>
             )}
             <div className="absolute bottom-0 left-0 right-0 p-8 flex justify-center z-10">
-              <button type="button" onClick={capturePhoto} className="w-20 h-20 bg-white/20 rounded-full border border-white/30 p-2">
-                <div className="w-full h-full bg-white rounded-full" />
+              <button type="button" onClick={capturePhoto} className="w-18 h-18 bg-white/20 rounded-full border border-white/40 p-2">
+                <div className="w-14 h-14 bg-white rounded-full mx-auto" />
               </button>
             </div>
           </div>

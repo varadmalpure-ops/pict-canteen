@@ -13,20 +13,6 @@ import StudentAuth from './components/StudentAuth';
 import StudentProfile from './components/StudentProfile';
 import { UserCircle, LogOut, Menu, X } from 'lucide-react';
 
-// Fix 2 — Admin route guard: only authenticated non-anonymous users reach AdminView
-function AdminRoute() {
-  const [checking, setChecking] = useState(true);
-  const [allowed, setAllowed] = useState(false);
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setAllowed(!!u && !u.isAnonymous);
-      setChecking(false);
-    });
-    return unsub;
-  }, []);
-  if (checking) return <div className="min-h-screen flex items-center justify-center bg-gray-50">Loading...</div>;
-  return allowed ? <AdminView /> : <Navigate to="/" replace />;
-}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -164,7 +150,7 @@ function App() {
           <Routes>
             <Route path="/" element={user ? <StudentView /> : <StudentAuth />} />
             <Route path="/profile" element={user ? <StudentProfile /> : <Navigate to="/" />} />
-            <Route path="/admin" element={<AdminRoute />} /> {/* Fix 2 — guarded route */}
+            <Route path="/admin" element={<AdminView />} />
             <Route path="/display" element={<CanteenQRCode url={window.location.origin} />} />
             <Route path="/live" element={<LiveDisplay />} />
           </Routes>

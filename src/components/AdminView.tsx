@@ -18,9 +18,20 @@ interface PendingStudent {
   selfieUrl?: string;
 }
 
-async function assertIsAdmin(uid: string): Promise<boolean> {
+function isBootstrapAdminEmail(email: string | null): boolean {
+  if (!email) return false;
+  const allowed = (import.meta.env.VITE_ALLOWED_ADMIN_EMAILS || 'canteen-staff@gmail.com,varadmalpure@gmail.com')
+    .split(',')
+    .map((e: string) => e.trim().toLowerCase());
+  return allowed.includes(email.toLowerCase());
+}
+
+async function assertIsAdmin(currentUser: User): Promise<boolean> {
+  if (isBootstrapAdminEmail(currentUser.email)) {
+    return true;
+  }
   try {
-    const adminSnap = await getDoc(doc(db, 'admins', uid));
+    const adminSnap = await getDoc(doc(db, 'admins', currentUser.uid));
     return adminSnap.exists();
   } catch {
     return false;
@@ -50,7 +61,7 @@ export default function AdminView() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        const ok = await assertIsAdmin(currentUser.uid);
+        const ok = await assertIsAdmin(currentUser);
         if (!ok) {
           await signOut(auth);
           setLoginError('Access Denied: You do not have administrator permissions.');
@@ -58,20 +69,14 @@ export default function AdminView() {
         } else {
           // Ensure admins/{uid} exists for claim-less bootstrap emails
           try {
-            await updateDoc(doc(db, 'admins', currentUser.uid), {
+            const { setDoc } = await import('firebase/firestore');
+            await setDoc(doc(db, 'admins', currentUser.uid), {
               email: currentUser.email,
+              role: 'admin',
               updated_at: new Date().toISOString(),
-            });
-          } catch {
-            try {
-              const { setDoc } = await import('firebase/firestore');
-              await setDoc(doc(db, 'admins', currentUser.uid), {
-                email: currentUser.email,
-                created_at: new Date().toISOString(),
-              });
-            } catch (e) {
-              console.warn('Could not upsert admins doc', e);
-            }
+            }, { merge: true });
+          } catch (e) {
+            console.warn('Could not upsert admins doc', e);
           }
           setUser(currentUser);
         }
