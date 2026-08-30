@@ -17,7 +17,6 @@ import {
   ChevronRight,
   X,
   Loader2,
-  Users,
   Utensils,
   Receipt,
   Search,
@@ -104,10 +103,6 @@ export default function StudentView() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [utrNumber, setUtrNumber] = useState('');
-  const [splitMode, setSplitMode] = useState<'NONE' | 'EQUAL' | 'CUSTOM'>('NONE');
-  const [splitCount, setSplitCount] = useState(2);
-  const [remainingSplitItems, setRemainingSplitItems] = useState<OrderItem[]>([]);
-  const [currentSplitSelection, setCurrentSplitSelection] = useState<Record<string, number>>({});
   const [scheduledFor, setScheduledFor] = useState<string>('now');
   const [customTime, setCustomTime] = useState<string>('');
   const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('razorpay');
@@ -318,12 +313,6 @@ export default function StudentView() {
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const customSplitTotal = remainingSplitItems.reduce((sum, item) => sum + (item.price * (currentSplitSelection[item.itemId] || 0)), 0);
-  const paymentAmount = splitMode === 'EQUAL'
-    ? (cartTotal / splitCount)
-    : splitMode === 'CUSTOM'
-      ? customSplitTotal
-      : cartTotal;
 
   const scheduleValue = scheduledFor === 'now' ? null : (scheduledFor === 'custom' ? (customTime || null) : scheduledFor);
 
@@ -349,8 +338,6 @@ export default function StudentView() {
     setCart([]);
     setIsStatusModalOpen(true);
     setIsPaymentModalOpen(false);
-    setSplitMode('NONE');
-    setSplitCount(2);
     setUtrNumber('');
   };
 
@@ -637,9 +624,6 @@ export default function StudentView() {
             <button
               onClick={() => {
                 fetchPaymentConfig();
-                setRemainingSplitItems(cart.map(item => ({ ...item })));
-                setCurrentSplitSelection({});
-                setSplitMode('NONE');
                 setIsPaymentModalOpen(true);
               }}
               className="w-full bg-gray-900 hover:bg-gray-800 text-white rounded-2xl p-4 flex items-center justify-between shadow-2xl transition-all"
@@ -725,54 +709,7 @@ export default function StudentView() {
               </div>
             </div>
 
-            <div className="bg-gray-50 p-4 rounded-2xl mb-6 border border-gray-100">
-              <div className="flex items-center gap-2 text-gray-700 mb-3">
-                <Users size={20} />
-                <span className="font-bold text-sm">Bill Split Calculator</span>
-              </div>
-              <p className="text-xs text-amber-600 mb-2 font-medium">
-                ⚠️ The full order amount is always charged. This tool only shows how to split it between friends.
-              </p>
-              <div className="flex bg-gray-200/50 p-1 rounded-xl gap-1 mb-3">
-                {(['NONE', 'EQUAL', 'CUSTOM'] as const).map(mode => (
-                  <button key={mode} onClick={() => setSplitMode(mode)} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg ${splitMode === mode ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
-                    {mode === 'NONE' ? 'None' : mode === 'EQUAL' ? 'Equally' : 'Custom'}
-                  </button>
-                ))}
-              </div>
-              {splitMode === 'EQUAL' && (
-                <div className="flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-gray-100">
-                  <span className="text-sm font-medium text-gray-600">Number of people:</span>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setSplitCount(Math.max(2, splitCount - 1))} className="p-1"><Minus size={16} /></button>
-                    <span className="font-bold w-4 text-center">{splitCount}</span>
-                    <button onClick={() => setSplitCount(splitCount + 1)} className="p-1"><Plus size={16} /></button>
-                  </div>
-                </div>
-              )}
-              {splitMode === 'CUSTOM' && (
-                <div className="bg-white p-3 rounded-xl border border-gray-100 mt-4 max-h-48 overflow-y-auto">
-                  {remainingSplitItems.map(item => {
-                    const selected = currentSplitSelection[item.itemId] || 0;
-                    return (
-                      <div key={item.itemId} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
-                        <div>
-                          <div className="font-medium text-sm">{item.name}</div>
-                          <div className="text-xs text-gray-500">₹{item.price} · {item.quantity} left</div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <button onClick={() => setCurrentSplitSelection(prev => ({ ...prev, [item.itemId]: Math.max(0, (prev[item.itemId] || 0) - 1) }))} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"><Minus size={14} /></button>
-                          <span className="font-bold text-sm w-4 text-center">{selected}</span>
-                          <button onClick={() => setCurrentSplitSelection(prev => ({ ...prev, [item.itemId]: Math.min(item.quantity, (prev[item.itemId] || 0) + 1) }))} className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><Plus size={14} /></button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="mb-6 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+            <div className="mb-4 bg-gray-50 p-4 rounded-2xl border border-gray-100">
               <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-2">Pickup Time</label>
               <select value={scheduledFor} onChange={(e) => setScheduledFor(e.target.value)} className="w-full bg-white px-4 py-3 rounded-xl border border-gray-200 outline-none font-medium mb-2 text-sm">
                 <option value="now">Now (Prepare Immediately)</option>
@@ -785,9 +722,9 @@ export default function StudentView() {
               )}
             </div>
 
-            <div className="text-center mb-6">
-              <div className="text-gray-500 text-xs font-medium mb-1">Total Payable</div>
-              <div className="text-4xl font-black text-gray-900">₹{paymentAmount.toFixed(2)}</div>
+            <div className="text-center mb-6 py-3 bg-gray-50 rounded-2xl border border-gray-100">
+              <div className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Total Payable</div>
+              <div className="text-4xl font-black text-gray-900">₹{cartTotal.toFixed(2)}</div>
             </div>
 
             {paymentProvider === 'upi_manual' && (
@@ -825,34 +762,17 @@ export default function StudentView() {
             )}
 
             <button
-              onClick={() => {
-                if (splitMode === 'CUSTOM' && remainingSplitItems.length > 0) {
-                  const newRemaining = remainingSplitItems.map(item => {
-                    const selected = currentSplitSelection[item.itemId] || 0;
-                    return { ...item, quantity: item.quantity - selected };
-                  }).filter(item => item.quantity > 0);
-                  if (newRemaining.length === 0) {
-                    handlePaymentSubmit();
-                  } else {
-                    setRemainingSplitItems(newRemaining);
-                    setCurrentSplitSelection({});
-                    setUtrNumber('');
-                  }
-                } else {
-                  handlePaymentSubmit();
-                }
-              }}
+              onClick={handlePaymentSubmit}
               disabled={
                 isProcessingPayment ||
-                (paymentProvider === 'upi_manual' && utrNumber.length !== 12) ||
-                (splitMode === 'CUSTOM' && customSplitTotal === 0 && remainingSplitItems.length > 0)
+                (paymentProvider === 'upi_manual' && utrNumber.length !== 12)
               }
-              className="w-full py-4 bg-gray-900 hover:bg-gray-800 text-white rounded-2xl font-bold text-lg disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg transition-colors"
+              className="w-full py-4 bg-gray-900 hover:bg-black text-white rounded-2xl font-bold text-lg disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg transition-colors active:scale-[0.99]"
             >
               {isProcessingPayment ? (
                 <><Loader2 size={24} className="animate-spin" /> Placing Order...</>
               ) : paymentProvider === 'razorpay' ? (
-                'Pay Securely & Place Order'
+                `Pay ₹${cartTotal.toFixed(2)} & Place Order`
               ) : (
                 'Submit UTR & Place Order'
               )}
