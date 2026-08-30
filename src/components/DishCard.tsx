@@ -1,3 +1,4 @@
+import React from 'react';
 import type { MenuItem, OrderItem } from '../types';
 import { Plus, Minus, Zap, Flame } from 'lucide-react';
 
@@ -9,7 +10,7 @@ interface DishCardProps {
   onRemoveFromCart: (itemId: string) => void;
 }
 
-export default function DishCard({
+export const DishCard = React.memo(function DishCard({
   item,
   cartItem,
   isPopular = false,
@@ -90,4 +91,6 @@ export default function DishCard({
       </div>
     </div>
   );
-}
+});
+
+export default DishCard;

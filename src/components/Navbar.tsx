@@ -19,6 +19,17 @@ import {
 import type { Order } from '../types';
 import { useTheme } from '../lib/ThemeContext';
 
+function isStaffAccount(email: string | null | undefined, currentPath: string): boolean {
+  if (['/admin', '/kitchen', '/live', '/display'].some(p => currentPath.startsWith(p))) {
+    return true;
+  }
+  if (!email) return false;
+  const allowed = (import.meta.env.VITE_ALLOWED_ADMIN_EMAILS || 'canteen-staff@gmail.com,varadmalpure@gmail.com')
+    .split(',')
+    .map((e: string) => e.trim().toLowerCase());
+  return allowed.includes(email.toLowerCase());
+}
+
 interface NavbarProps {
   user: User | null;
   activeOrders?: Order[];
@@ -29,6 +40,8 @@ export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: N
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const { theme, setTheme } = useTheme();
+
+  const isStaff = isStaffAccount(user?.email, location.pathname);
 
   const readyOrder = activeOrders.find(o => o.status === 'READY');
   const preparingOrder = activeOrders.find(o => o.status === 'PREPARING' || o.status === 'Pending');
@@ -130,41 +143,46 @@ export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: N
             <UtensilsCrossed size={14} /> Menu
           </Link>
 
-          <Link
-            to="/live"
-            onClick={() => setIsMenuOpen(false)}
-            className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 google-touch google-ripple ${
-              location.pathname === '/live'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Tv size={14} /> Kitchen TV
-          </Link>
+          {/* Staff-Only Sections: Only visible for staff accounts or when on staff views */}
+          {isStaff && (
+            <>
+              <Link
+                to="/live"
+                onClick={() => setIsMenuOpen(false)}
+                className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 google-touch google-ripple ${
+                  location.pathname === '/live'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Tv size={14} /> Kitchen TV
+              </Link>
 
-          <Link
-            to="/kitchen"
-            onClick={() => setIsMenuOpen(false)}
-            className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 google-touch google-ripple ${
-              location.pathname === '/kitchen'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <ChefHat size={14} /> Kitchen KDS
-          </Link>
+              <Link
+                to="/kitchen"
+                onClick={() => setIsMenuOpen(false)}
+                className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 google-touch google-ripple ${
+                  location.pathname === '/kitchen'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <ChefHat size={14} /> Kitchen KDS
+              </Link>
 
-          <Link
-            to="/admin"
-            onClick={() => setIsMenuOpen(false)}
-            className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 google-touch google-ripple ${
-              location.pathname === '/admin'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <ShieldCheck size={14} /> Manager
-          </Link>
+              <Link
+                to="/admin"
+                onClick={() => setIsMenuOpen(false)}
+                className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 google-touch google-ripple ${
+                  location.pathname === '/admin'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <ShieldCheck size={14} /> Manager
+              </Link>
+            </>
+          )}
 
           {user && (
             <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-2.5 md:border-l md:border-slate-200 dark:md:border-slate-800 md:pl-2.5 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800">

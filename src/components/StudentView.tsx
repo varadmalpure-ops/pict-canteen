@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { onSnapshot, query, where, getDocs, documentId, limit } from 'firebase/firestore';
 import {
   menuItemsCollection,
@@ -62,13 +62,21 @@ async function getFreshLocation(): Promise<{ latitude: number; longitude: number
         });
       },
       () => resolve({ latitude: 18.4584975, longitude: 73.8512198 }),
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
+      { enableHighAccuracy: false, timeout: 3000, maximumAge: 300000 }
     );
   });
 }
 
 export default function StudentView() {
-  const [menu, setMenu] = useState<MenuItem[]>([]);
+  // Instant cache-first menu initialization for 0ms visual render
+  const [menu, setMenu] = useState<MenuItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('pict_canteen_menu_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
@@ -90,7 +98,14 @@ export default function StudentView() {
   }, [activeOrderIds]);
 
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('pict_canteen_menu_cache');
+      return !cached || JSON.parse(cached).length === 0;
+    } catch {
+      return true;
+    }
+  });
   const [recommendations, setRecommendations] = useState<MenuItem[]>([]);
 
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -120,7 +135,7 @@ export default function StudentView() {
     }
   }, []);
 
-  // Fetch Menu synchronously & fast
+  // Fetch Menu synchronously & fast with localStorage caching
   useEffect(() => {
     const unsubscribeMenu = onSnapshot(menuItemsCollection, (snapshot) => {
       const items = snapshot.docs
@@ -136,6 +151,9 @@ export default function StudentView() {
       });
       setMenu(items);
       setLoading(false);
+      try {
+        localStorage.setItem('pict_canteen_menu_cache', JSON.stringify(items));
+      } catch {}
     }, () => setLoading(false));
 
     return () => unsubscribeMenu();
@@ -283,7 +301,7 @@ export default function StudentView() {
     return () => unsubscribe();
   }, [activeOrderIds]);
 
-  const repeatLastOrder = () => {
+  const repeatLastOrder = useCallback(() => {
     if (!lastOrder || !lastOrder.items || lastOrder.items.length === 0) return;
     const itemsToAdd: OrderItem[] = [];
     lastOrder.items.forEach(orderItem => {
@@ -303,9 +321,9 @@ export default function StudentView() {
     } else {
       alert('The items from your previous order are currently sold out.');
     }
-  };
+  }, [lastOrder, menu]);
 
-  const addToCart = (item: MenuItem) => {
+  const addToCart = useCallback((item: MenuItem) => {
     if (item.price < 0) return;
     setCart(prev => {
       const existing = prev.find(i => i.itemId === item.id);
@@ -314,11 +332,11 @@ export default function StudentView() {
       }
       return [...prev, { itemId: item.id, name: item.name, price: item.price, quantity: 1, is_express: item.is_express }];
     });
-  };
+  }, []);
 
-  const removeFromCart = (itemId: string) => {
+  const removeFromCart = useCallback((itemId: string) => {
     setCart(prev => prev.map(i => i.itemId === itemId ? { ...i, quantity: i.quantity - 1 } : i).filter(i => i.quantity > 0));
-  };
+  }, []);
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -438,29 +456,36 @@ export default function StudentView() {
     }
   };
 
+  const rawCategories = useMemo(() => Array.from(new Set(menu.map(item => item.category))), [menu]);
+  const categories = useMemo(() => ['ALL', ...rawCategories], [rawCategories]);
+
+  const filteredMenu = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return menu.filter(item => {
+      const matchesCategory = selectedCategory === 'ALL' || item.category === selectedCategory;
+      if (!matchesCategory) return false;
+      if (!query) return true;
+      return (
+        item.name.toLowerCase().includes(query) ||
+        (item.category || '').toLowerCase().includes(query)
+      );
+    });
+  }, [menu, selectedCategory, searchQuery]);
+
+  const displayCategories = useMemo(() => {
+    return selectedCategory === 'ALL'
+      ? rawCategories
+      : rawCategories.filter(c => c === selectedCategory);
+  }, [rawCategories, selectedCategory]);
+
   if (loading) {
     return (
-      <div className="flex flex-col h-[calc(100vh-4rem)] items-center justify-center text-slate-500 gap-3">
-        <Loader2 className="animate-spin text-indigo-600" size={32} />
-        <span className="font-bold text-sm">Loading canteen menu...</span>
+      <div className="flex flex-col h-[calc(100vh-4rem)] items-center justify-center text-slate-500 dark:text-slate-400 gap-3">
+        <Loader2 className="animate-spin text-blue-600 dark:text-blue-400" size={32} />
+        <span className="font-bold text-xs">Loading PICT canteen menu...</span>
       </div>
     );
   }
-
-  const rawCategories = Array.from(new Set(menu.map(item => item.category)));
-  const categories = ['ALL', ...rawCategories];
-
-  const filteredMenu = menu.filter(item => {
-    const matchesCategory = selectedCategory === 'ALL' || item.category === selectedCategory;
-    const matchesSearch = !searchQuery.trim() ||
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.category || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
-
-  const displayCategories = selectedCategory === 'ALL'
-    ? rawCategories
-    : rawCategories.filter(c => c === selectedCategory);
 
   return (
     <div className="max-w-3xl mx-auto px-4 pb-36 transition-colors duration-200">

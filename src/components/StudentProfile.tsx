@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { updatePassword } from 'firebase/auth';
-import { Loader2, Camera, User, Lock, CheckCircle2, Clock, Sun, Moon, Laptop, Palette } from 'lucide-react';
+import { Loader2, Camera, User, Lock, CheckCircle2, Clock, Sun, Moon, Laptop, Palette, ShieldCheck, ChefHat, Tv } from 'lucide-react';
 import { uploadUserImage, getUserImageUrl } from '../lib/userPhotos';
 import { useTheme } from '../lib/ThemeContext';
 
@@ -238,7 +239,7 @@ export default function StudentProfile() {
       </div>
 
       {/* 3. Password & Security Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 dark:border-slate-800 transition-colors">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 dark:border-slate-800 transition-colors mb-6">
         <h4 className="text-base font-black text-slate-900 dark:text-white mb-4 flex items-center gap-2">
           <Lock size={18} className="text-blue-600 dark:text-blue-400" />
           <span>Security & Password</span>
@@ -269,6 +270,37 @@ export default function StudentProfile() {
             </div>
           )}
         </form>
+      </div>
+
+      {/* 4. Staff Portal Section (Discreet access for authorized staff) */}
+      <div className="bg-slate-100/70 dark:bg-slate-900/60 rounded-3xl p-6 border border-slate-200/60 dark:border-slate-800 transition-colors">
+        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold text-xs mb-3">
+          <ShieldCheck size={16} className="text-blue-600 dark:text-blue-400" />
+          <span>Canteen Staff & Kitchen Access</span>
+        </div>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+          Authorized staff can access kitchen and order management portals directly.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to="/admin"
+            className="px-3.5 py-1.5 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-full border border-slate-200/80 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 google-touch transition-all shadow-2xs"
+          >
+            <ShieldCheck size={13} className="text-blue-600" /> Manager Portal
+          </Link>
+          <Link
+            to="/kitchen"
+            className="px-3.5 py-1.5 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-full border border-slate-200/80 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 google-touch transition-all shadow-2xs"
+          >
+            <ChefHat size={13} className="text-amber-500" /> Kitchen KDS
+          </Link>
+          <Link
+            to="/live"
+            className="px-3.5 py-1.5 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-full border border-slate-200/80 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 google-touch transition-all shadow-2xs"
+          >
+            <Tv size={13} className="text-indigo-500" /> Live TV
+          </Link>
+        </div>
       </div>
     </div>
   );
