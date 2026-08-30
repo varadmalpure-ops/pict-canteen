@@ -217,9 +217,7 @@ async function writeOrderAndBoard(orderPayload) {
 /**
  * Public payment config for the client (key id only — never the secret).
  */
-exports.getPaymentConfig = functions
-  .runWith({ enforceAppCheck: true })
-  .https.onCall(async (_data, context) => {
+exports.getPaymentConfig = functions.https.onCall(async (_data, context) => {
     requireAuth(context);
     const { keyId, enabled } = getRazorpayConfig();
     return {
@@ -231,9 +229,7 @@ exports.getPaymentConfig = functions
 /**
  * Create a Razorpay order when gateway credentials are configured.
  */
-exports.createPaymentOrder = functions
-  .runWith({ enforceAppCheck: true })
-  .https.onCall(async (data, context) => {
+exports.createPaymentOrder = functions.https.onCall(async (data, context) => {
     requireAuth(context);
     const { enabled, keyId, keySecret } = getRazorpayConfig();
     if (!enabled) {
@@ -293,9 +289,7 @@ exports.createPaymentOrder = functions
  * Place order — prices from menu, never trusts client totals/status.
  * Payment: Razorpay signature (Verified) OR manual UTR (Unverified until staff confirms).
  */
-exports.placeOrder = functions
-  .runWith({ enforceAppCheck: true })
-  .https.onCall(async (data, context) => {
+exports.placeOrder = functions.https.onCall(async (data, context) => {
     requireAuth(context);
     const uid = context.auth.uid;
 
@@ -397,9 +391,7 @@ exports.placeOrder = functions
 /**
  * Admin advances/cancels order and keeps the public display board in sync.
  */
-exports.updateOrderStatus = functions
-  .runWith({ enforceAppCheck: true })
-  .https.onCall(async (data, context) => {
+exports.updateOrderStatus = functions.https.onCall(async (data, context) => {
     requireAuth(context);
     const isClaimAdmin = context.auth.token.admin === true;
     const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
@@ -492,9 +484,7 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
 /**
  * Staff: set student verificationStatus after reviewing ID + selfie in Storage.
  */
-exports.setStudentVerification = functions
-  .runWith({ enforceAppCheck: true })
-  .https.onCall(async (data, context) => {
+exports.setStudentVerification = functions.https.onCall(async (data, context) => {
     requireAuth(context);
     const isClaimAdmin = context.auth.token.admin === true;
     const adminDoc = await db.collection("admins").doc(context.auth.uid).get();

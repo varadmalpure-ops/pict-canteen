@@ -191,18 +191,26 @@ export default function StudentView() {
     return () => unsubQueue();
   }, []);
 
-  useEffect(() => {
-    if (!auth.currentUser) return;
-    getPaymentConfigFn()
-      .then((res) => {
-        const data = res.data as { provider: PaymentProvider; razorpayKeyId: string | null };
+  const fetchPaymentConfig = useCallback(async () => {
+    try {
+      const res = await getPaymentConfigFn();
+      const data = res.data as { provider: PaymentProvider; razorpayKeyId: string | null };
+      if (data && data.provider) {
         setPaymentProvider(data.provider);
+      }
+      if (data && data.razorpayKeyId) {
         setRazorpayKeyId(data.razorpayKeyId);
-      })
-      .catch(() => {
-        setPaymentProvider('upi_manual');
-      });
+      }
+    } catch (e) {
+      console.warn('Payment config fallback:', e);
+      setPaymentProvider('razorpay');
+      setRazorpayKeyId('rzp_test_TVtehvAXj8IuPh');
+    }
   }, []);
+
+  useEffect(() => {
+    fetchPaymentConfig();
+  }, [fetchPaymentConfig]);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -661,6 +669,7 @@ export default function StudentView() {
           <div className="max-w-3xl mx-auto">
             <button
               onClick={() => {
+                fetchPaymentConfig();
                 setRemainingSplitItems(cart.map(item => ({ ...item })));
                 setCurrentSplitSelection({});
                 setSplitMode('NONE');
@@ -673,7 +682,7 @@ export default function StudentView() {
                 <div className="text-left">
                   <div className="font-semibold">{cart.reduce((a, b) => a + b.quantity, 0)} items in Cart</div>
                   <div className="text-gray-300 text-xs">
-                    {paymentProvider === 'razorpay' ? 'Online Payment' : 'UPI Payment + UTR Verification'}
+                    {paymentProvider === 'razorpay' ? '1-Click Online (UPI / Cards)' : 'UPI Transfer + UTR'}
                   </div>
                 </div>
               </div>
@@ -689,16 +698,65 @@ export default function StudentView() {
       {isPaymentModalOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4 pb-0 sm:pb-4">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold">Complete Payment</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-gray-900">Checkout & Payment</h3>
               <button onClick={() => !isProcessingPayment && setIsPaymentModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
             </div>
 
-            {paymentProvider === 'upi_manual' && (
-              <div className="bg-amber-50 text-amber-900 p-3.5 rounded-xl mb-4 text-xs font-medium border border-amber-100">
-                Pay to the official Canteen UPI ID, enter your 12-digit UTR below, and your food token will be generated immediately.
+            {/* Selected Items Order Summary */}
+            <div className="bg-gray-50 p-4 rounded-2xl mb-4 border border-gray-100">
+              <div className="flex justify-between items-center mb-2.5 pb-2 border-b border-gray-200/70">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Items in Order ({cart.reduce((a, b) => a + b.quantity, 0)})</span>
+                <span className="text-xs font-bold text-gray-700">Subtotal</span>
               </div>
-            )}
+              <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                {cart.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-center text-sm">
+                    <div className="font-medium text-gray-800 flex items-center gap-2">
+                      <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">{item.quantity}x</span>
+                      <span className="line-clamp-1">{item.name}</span>
+                    </div>
+                    <span className="font-bold text-gray-900 shrink-0">₹{(item.price * item.quantity).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Payment Method Selector */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-2">Choose Payment Option</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentProvider('razorpay')}
+                  className={`p-3 rounded-2xl border text-left transition-all ${
+                    paymentProvider === 'razorpay'
+                      ? 'bg-blue-50 border-blue-500 text-blue-900 ring-2 ring-blue-200 shadow-sm'
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="font-bold text-xs flex items-center gap-1.5 text-blue-700">
+                    <Zap size={14} className="fill-blue-600" /> 1-Click Online
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-1">GPay, PhonePe, Cards</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentProvider('upi_manual')}
+                  className={`p-3 rounded-2xl border text-left transition-all ${
+                    paymentProvider === 'upi_manual'
+                      ? 'bg-blue-50 border-blue-500 text-blue-900 ring-2 ring-blue-200 shadow-sm'
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="font-bold text-xs flex items-center gap-1.5 text-purple-700">
+                    <Copy size={14} /> Manual UPI (UTR)
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-1">Direct UPI ID + Ref</div>
+                </button>
+              </div>
+            </div>
 
             <div className="bg-gray-50 p-4 rounded-2xl mb-6 border border-gray-100">
               <div className="flex items-center gap-2 text-gray-700 mb-3">
