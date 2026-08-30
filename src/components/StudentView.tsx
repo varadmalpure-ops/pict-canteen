@@ -124,7 +124,7 @@ export default function StudentView() {
     const unsubscribeMenu = onSnapshot(menuItemsCollection, async (snapshot) => {
       const items = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() } as MenuItem))
-        .filter(i => !i.isTest && Number(i.price) > 0);
+        .filter(i => Number(i.price) >= 0);
 
       items.sort((a, b) => {
         const catA = (a.category || '').toLowerCase();
@@ -298,7 +298,7 @@ export default function StudentView() {
   };
 
   const addToCart = (item: MenuItem) => {
-    if (item.isTest || item.price <= 0) return;
+    if (item.price < 0) return;
     setCart(prev => {
       const existing = prev.find(i => i.itemId === item.id);
       if (existing) {
@@ -350,6 +350,12 @@ export default function StudentView() {
     try {
       const position = await getFreshLocation();
       setCoords(position);
+
+      // ₹0 Sample Test Order bypasses gateway
+      if (cartTotal === 0) {
+        await submitOrder({ utr_number: 'SAMPLE_TEST_0' });
+        return;
+      }
 
       if (paymentProvider === 'razorpay' && razorpayKeyId) {
         const created = await createPaymentOrderFn({
@@ -452,8 +458,8 @@ export default function StudentView() {
       {/* Live Rush Meter */}
       <RushMeter queueCount={queueCount} />
 
-      {/* 1-Tap Repeat Order Banner */}
-      {lastOrder && lastOrder.items && cart.length === 0 && (
+      {/* 1-Tap Repeat Order Banner - Fixed & Stable */}
+      {lastOrder && lastOrder.items && (
         <div className="bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 text-white p-4 rounded-2xl mb-5 flex items-center justify-between shadow-lg shadow-indigo-500/15">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 p-2.5 rounded-xl">

@@ -120,8 +120,7 @@ export default function AdminView() {
 
     const unsubscribeMenu = onSnapshot(menuItemsCollection, (snapshot) => {
       const items = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() } as MenuItem))
-        .filter(i => !i.isTest);
+        .map(d => ({ id: d.id, ...d.data() } as MenuItem));
       items.sort((a, b) => {
         const catCmp = (a.category || '').localeCompare(b.category || '');
         if (catCmp !== 0) return catCmp;

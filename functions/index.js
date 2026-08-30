@@ -76,9 +76,6 @@ async function validateAndPriceItems(items) {
     }
 
     const menuData = menuDoc.data();
-    if (menuData.isTest === true) {
-      throw new functions.https.HttpsError("failed-precondition", "Test items are not orderable.");
-    }
     if (!menuData.is_available) {
       throw new functions.https.HttpsError(
         "failed-precondition",
@@ -86,7 +83,7 @@ async function validateAndPriceItems(items) {
       );
     }
     const price = Number(menuData.price);
-    if (!Number.isFinite(price) || price <= 0) {
+    if (!Number.isFinite(price) || price < 0) {
       throw new functions.https.HttpsError("failed-precondition", "Invalid menu price.");
     }
     if (!menuData.is_express) allExpress = false;
@@ -104,8 +101,8 @@ async function validateAndPriceItems(items) {
   if (validatedItems.length === 0) {
     throw new functions.https.HttpsError("invalid-argument", "No valid items in the order.");
   }
-  if (calculatedTotal <= 0) {
-    throw new functions.https.HttpsError("invalid-argument", "Order total must be positive.");
+  if (calculatedTotal < 0) {
+    throw new functions.https.HttpsError("invalid-argument", "Order total must be non-negative.");
   }
 
   return { validatedItems, calculatedTotal, allExpress };
@@ -312,7 +309,19 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
       throw new functions.https.HttpsError("invalid-argument", "Invalid scheduled_for value.");
     }
 
-    if (enabled && data.razorpay_order_id && data.razorpay_payment_id && data.razorpay_signature) {
+    const { validatedItems, calculatedTotal, allExpress } = enabled && data.razorpay_payment_id
+      ? {
+          validatedItems: itemsSource,
+          calculatedTotal: itemsSource.reduce((s, i) => s + i.price * i.quantity, 0),
+          allExpress: itemsSource.every((i) => i.is_express),
+        }
+      : await validateAndPriceItems(itemsSource);
+
+    if (calculatedTotal === 0) {
+      paymentStatus = "Verified";
+      paymentMethod = "Sample Test (₹0)";
+      utrNumber = "SAMPLE_TEST_0";
+    } else if (enabled && data.razorpay_order_id && data.razorpay_payment_id && data.razorpay_signature) {
       const ok = verifyRazorpaySignature(
         data.razorpay_order_id,
         data.razorpay_payment_id,
@@ -332,7 +341,6 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError("already-exists", "Payment already used.");
       }
 
-      itemsSource = intentSnap.data().items;
       paymentStatus = "Verified";
       paymentMethod = "Razorpay";
       razorpayPaymentId = data.razorpay_payment_id;
@@ -352,14 +360,6 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
       paymentStatus = "Unverified";
       paymentMethod = "UPI";
     }
-
-    const { validatedItems, calculatedTotal, allExpress } = enabled && razorpayPaymentId
-      ? {
-          validatedItems: itemsSource,
-          calculatedTotal: itemsSource.reduce((s, i) => s + i.price * i.quantity, 0),
-          allExpress: itemsSource.every((i) => i.is_express),
-        }
-      : await validateAndPriceItems(itemsSource);
 
     // Even express items stay Pending until payment is verified (or staff advances).
     const status = paymentStatus === "Verified" && allExpress ? "READY" : "Pending";
