@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
-// import { initializeDatabase } from './initDb';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { uploadUserImage } from './lib/userPhotos';
 import StudentView from './components/StudentView';
 import AdminView from './components/AdminView';
 import CanteenQRCode from './components/CanteenQRCode';
@@ -19,9 +19,6 @@ function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
-    // Database is already initialized online, so we don't need to re-seed it on every user visit
-    // initializeDatabase();
-    
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser?.isAnonymous) {
         await signOut(auth);
@@ -30,33 +27,42 @@ function App() {
       } else if (currentUser) {
         try {
           const docSnap = await getDoc(doc(db, 'users', currentUser.uid));
-          
+
           if (docSnap.exists()) {
             setUser(currentUser);
           } else {
             const pendingRegStr = localStorage.getItem('pendingReg');
             if (pendingRegStr) {
-               const pendingReg = JSON.parse(pendingRegStr);
-               if (pendingReg.pnr) {
-                  await setDoc(doc(db, 'users', currentUser.uid), {
-                    uid: currentUser.uid,
-                    email: currentUser.email,
-                    pnr: pendingReg.pnr,
-                    dob: pendingReg.dob,
-                    photoBase64: pendingReg.photoBase64,
-                    created_at: new Date().toISOString()
-                  });
-                  localStorage.removeItem('pendingReg');
-                  setUser(currentUser);
-               }
+              const pendingReg = JSON.parse(pendingRegStr);
+              if (pendingReg.pnr && pendingReg.idDataUrl && pendingReg.selfieDataUrl) {
+                const idPhotoPath = await uploadUserImage(currentUser.uid, 'id.jpg', pendingReg.idDataUrl);
+                const selfiePath = await uploadUserImage(currentUser.uid, 'selfie.jpg', pendingReg.selfieDataUrl);
+
+                await setDoc(doc(db, 'users', currentUser.uid), {
+                  uid: currentUser.uid,
+                  email: currentUser.email || '',
+                  pnr: String(pendingReg.pnr).slice(0, 31),
+                  dob: String(pendingReg.dob || '').slice(0, 31),
+                  idPhotoPath,
+                  selfiePath,
+                  verificationStatus: 'pending',
+                  created_at: new Date().toISOString()
+                });
+                localStorage.removeItem('pendingReg');
+                setUser(currentUser);
+              } else {
+                localStorage.setItem('authError', 'Registration incomplete. Please register with ID and selfie.');
+                await signOut(auth);
+                setUser(null);
+              }
             } else {
-               localStorage.setItem('authError', 'No account found. Please register first.');
-               await signOut(auth);
-               setUser(null);
+              localStorage.setItem('authError', 'No account found. Please register first.');
+              await signOut(auth);
+              setUser(null);
             }
           }
         } catch (e: any) {
-          console.error("Firestore Error:", e);
+          console.error('Firestore Error:', e);
           localStorage.setItem('authError', e.message || 'Error saving profile. Please try again.');
           await signOut(auth);
           setUser(null);
@@ -94,7 +100,7 @@ function App() {
                 </span>
               </div>
             </Link>
-            <button 
+            <button
               className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >

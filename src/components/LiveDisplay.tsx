@@ -1,32 +1,28 @@
 import { useState, useEffect } from 'react';
 import { onSnapshot, query, where } from 'firebase/firestore';
-import { ordersCollection } from '../firebase';
-import type { Order } from '../types';
+import { displayBoardCollection } from '../firebase';
 import { ChefHat, BellRing } from 'lucide-react';
 
+type BoardEntry = {
+  id: string;
+  token_number: string;
+  status: 'PREPARING' | 'READY' | string;
+};
+
 export default function LiveDisplay() {
-  const [preparingOrders, setPreparingOrders] = useState<Order[]>([]);
-  const [readyOrders, setReadyOrders] = useState<Order[]>([]);
+  const [preparingOrders, setPreparingOrders] = useState<BoardEntry[]>([]);
+  const [readyOrders, setReadyOrders] = useState<BoardEntry[]>([]);
 
   useEffect(() => {
-    // Only get orders that are preparing or ready, limit to 20 to avoid screen overflow
     const q = query(
-      ordersCollection,
+      displayBoardCollection,
       where('status', 'in', ['PREPARING', 'READY'])
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-      
-      // Sort by creation time manually since we have an 'in' query
-      orders.sort((a, b) => {
-        const timeA = a.created_at || 0;
-        const timeB = b.created_at || 0;
-        return timeA > timeB ? 1 : -1;
-      });
-
-      setPreparingOrders(orders.filter(o => o.status === 'PREPARING'));
-      setReadyOrders(orders.filter(o => o.status === 'READY'));
+      const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as BoardEntry));
+      setPreparingOrders(entries.filter(o => o.status === 'PREPARING'));
+      setReadyOrders(entries.filter(o => o.status === 'READY'));
     });
 
     return () => unsubscribe();
@@ -42,7 +38,6 @@ export default function LiveDisplay() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 flex-1">
-        {/* Preparing Column */}
         <div className="bg-gray-800/50 rounded-3xl p-6 border border-gray-700/50 flex flex-col">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-700">
             <div className="bg-orange-500/20 p-3 rounded-2xl">
@@ -50,13 +45,12 @@ export default function LiveDisplay() {
             </div>
             <h2 className="text-3xl font-bold text-gray-200">Preparing</h2>
           </div>
-          
           <div className="flex flex-wrap gap-4 items-start content-start">
             {preparingOrders.length === 0 ? (
               <div className="text-gray-500 text-xl w-full text-center py-10 font-medium">No orders in queue</div>
             ) : (
               preparingOrders.map(order => (
-                <div key={order.id} className="bg-gray-800 border border-gray-700 px-6 py-4 rounded-2xl shadow-lg">
+                <div key={order.id} className="bg-gray-800 border border-gray-700 px-6 py-4 rounded-2xl">
                   <span className="text-3xl font-bold text-gray-300">{order.token_number}</span>
                 </div>
               ))
@@ -64,22 +58,20 @@ export default function LiveDisplay() {
           </div>
         </div>
 
-        {/* Ready Column */}
         <div className="bg-blue-900/20 rounded-3xl p-6 border border-blue-800/30 flex flex-col">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-900/50">
-            <div className="bg-green-500/20 p-3 rounded-2xl animate-pulse">
+            <div className="bg-green-500/20 p-3 rounded-2xl">
               <BellRing size={32} className="text-green-400" />
             </div>
             <h2 className="text-3xl font-bold text-white">Ready for Pickup</h2>
           </div>
-          
           <div className="flex flex-wrap gap-4 items-start content-start">
             {readyOrders.length === 0 ? (
               <div className="text-blue-500/50 text-xl w-full text-center py-10 font-medium">Waiting for orders to be ready...</div>
             ) : (
               readyOrders.map(order => (
-                <div key={order.id} className="bg-green-500 text-white px-8 py-5 rounded-2xl shadow-xl shadow-green-500/20 transform hover:scale-105 transition-transform animate-in zoom-in duration-300 border border-green-400">
-                  <span className="text-4xl font-black">{order.token_number}</span>
+                <div key={order.id} className="bg-blue-900/40 border border-blue-700 px-6 py-4 rounded-2xl">
+                  <span className="text-3xl font-bold text-white">{order.token_number}</span>
                 </div>
               ))
             )}
