@@ -6,26 +6,28 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDH830cFEfNtAAC6UJ-o0oDWPCHGLaezoE',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'pict-canteen-aa0c6.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'pict-canteen-aa0c6',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'pict-canteen-aa0c6.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '1076792740179',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:1076792740179:web:cee77d8c0d822b65b739a6'
 };
 
 const app = initializeApp(firebaseConfig);
 
-// App Check — enable enforcement for Firestore/Storage/Functions in Firebase Console
-if (typeof window !== 'undefined') {
-  // Debug token support for local development:
-  // self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-  initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(
-      import.meta.env.VITE_RECAPTCHA_SITE_KEY
-    ),
-    isTokenAutoRefreshEnabled: true
-  });
+// App Check — only initialize if reCAPTCHA key is configured
+if (typeof window !== 'undefined' && import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
+  try {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(
+        import.meta.env.VITE_RECAPTCHA_SITE_KEY
+      ),
+      isTokenAutoRefreshEnabled: true
+    });
+  } catch (e) {
+    console.warn('App Check initialization skipped:', e);
+  }
 }
 
 export const db = getFirestore(app);
