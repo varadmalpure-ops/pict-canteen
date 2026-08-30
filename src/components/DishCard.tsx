@@ -50,9 +50,6 @@ export default function DishCard({
           <span className="font-black text-slate-900 text-base">
             ₹{item.price}
           </span>
-          <span className="text-[11px] font-medium text-slate-400">
-            {item.category}
-          </span>
         </div>
       </div>
 
