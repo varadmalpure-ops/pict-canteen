@@ -19,7 +19,6 @@ import {
   Loader2,
   Users,
   Utensils,
-  MapPin,
   Receipt,
   Search,
   RotateCcw,
@@ -101,11 +100,7 @@ export default function StudentView() {
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState<MenuItem[]>([]);
 
-  const [locationReady, setLocationReady] = useState(false);
-  const [locationError, setLocationError] = useState('');
-  const [isLocating, setIsLocating] = useState(false);
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [utrNumber, setUtrNumber] = useState('');
@@ -115,22 +110,21 @@ export default function StudentView() {
   const [currentSplitSelection, setCurrentSplitSelection] = useState<Record<string, number>>({});
   const [scheduledFor, setScheduledFor] = useState<string>('now');
   const [customTime, setCustomTime] = useState<string>('');
-  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('upi_manual');
-  const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(null);
+  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('razorpay');
+  const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>('rzp_test_TVtehvAXj8IuPh');
 
-  const requestLocation = useCallback(async () => {
-    setIsLocating(true);
-    setLocationError('');
-    try {
-      const position = await getFreshLocation();
-      setCoords(position);
-      setLocationReady(true);
-    } catch (e: any) {
-      setLocationReady(false);
-      setCoords(null);
-      setLocationError(e.message || 'Location required');
-    } finally {
-      setIsLocating(false);
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCoords({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        () => {},
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
+      );
     }
   }, []);
 
@@ -369,7 +363,6 @@ export default function StudentView() {
     try {
       const position = await getFreshLocation();
       setCoords(position);
-      setLocationReady(true);
 
       if (paymentProvider === 'razorpay' && razorpayKeyId) {
         const created = await createPaymentOrderFn({
@@ -434,32 +427,6 @@ export default function StudentView() {
     }
   };
 
-  if (!locationReady) {
-    return (
-      <div className="flex flex-col h-[calc(100vh-4rem)] items-center justify-center p-6 text-center">
-        <div className="bg-blue-50 p-6 rounded-full mb-4">
-          <MapPin size={48} className="text-blue-500" />
-        </div>
-        <h2 className="text-2xl font-black text-gray-900 mb-2">Location Required</h2>
-        <p className="text-gray-600 font-medium max-w-sm mb-6">
-          Location is checked on the server when you place an order. Please allow access so we can verify you are near PICT campus.
-        </p>
-        {locationError && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-6 max-w-sm border border-red-100">
-            {locationError}
-          </div>
-        )}
-        <button
-          onClick={requestLocation}
-          disabled={isLocating}
-          className="bg-gray-900 text-white px-8 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors disabled:opacity-50"
-        >
-          {isLocating ? <Loader2 className="animate-spin" size={20} /> : <MapPin size={20} />}
-          {isLocating ? 'Locating...' : 'Verify My Location'}
-        </button>
-      </div>
-    );
-  }
 
   if (loading) {
     return <div className="flex h-[calc(100vh-4rem)] items-center justify-center"><Loader2 className="animate-spin text-blue-600 mr-2" /> Loading Menu...</div>;
