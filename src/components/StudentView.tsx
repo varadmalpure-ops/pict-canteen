@@ -378,6 +378,12 @@ export default function StudentView() {
             name: 'PICT Canteen',
             description: 'Food Order Payment',
             order_id: orderData.razorpayOrderId,
+            prefill: {
+              name: auth.currentUser?.displayName || 'Student',
+              email: auth.currentUser?.email || '',
+              contact: '9999999999'
+            },
+            theme: { color: '#4F46E5' },
             handler: async (response: {
               razorpay_order_id: string;
               razorpay_payment_id: string;
@@ -394,41 +400,10 @@ export default function StudentView() {
                 reject(err);
               }
             },
-            modal: { ondismiss: () => reject(new Error('Payment cancelled')) },
-            prefill: {
-              email: auth.currentUser?.email || '',
-              contact: '9999999999'
-            },
-            config: {
-              display: {
-                blocks: {
-                  upi_block: {
-                    name: 'Pay via UPI (GPay, PhonePe, Paytm, QR)',
-                    instruments: [
-                      {
-                        method: 'upi'
-                      }
-                    ]
-                  },
-                  cards_block: {
-                    name: 'Cards & Netbanking',
-                    instruments: [
-                      {
-                        method: 'card'
-                      },
-                      {
-                        method: 'netbanking'
-                      }
-                    ]
-                  }
-                },
-                sequence: ['block.upi_block', 'block.cards_block'],
-                preferences: {
-                  show_default_blocks: true
-                }
-              }
-            },
-            theme: { color: '#4F46E5' }
+            modal: {
+              ondismiss: () => reject(new Error('Payment cancelled')),
+              escape: true,
+            }
           });
           rzp.open();
         });
