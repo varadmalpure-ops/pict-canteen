@@ -12,7 +12,8 @@ const MIN_ORDER_INTERVAL_MS = 30_000;
 const MAX_ITEMS_PER_ORDER = 30;
 const MAX_LINE_QUANTITY = 20;
 
-const callableOpts = { enforceAppCheck: true };
+// App Check is optional — enforcing it without a client reCAPTCHA key
+// hangs Kitchen login and checkout on failed callable requests.
 
 let menuCache = null;
 let menuCacheTime = 0;
@@ -153,23 +154,11 @@ async function validateAndPriceItems(items) {
   return { validatedItems, calculatedTotal, allExpress };
 }
 
-function assertCampusLocation(latitude, longitude) {
+function checkCampusLocation(latitude, longitude) {
   const lat = Number(latitude);
   const lon = Number(longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "Campus location is required to place an order."
-    );
-  }
-  const dist = distanceKm(lat, lon, PICT_LAT, PICT_LON);
-  if (dist > MAX_DISTANCE_KM) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      `You must be within ${MAX_DISTANCE_KM}km of PICT campus to order.`
-    );
-  }
-  return true;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  return distanceKm(lat, lon, PICT_LAT, PICT_LON) <= MAX_DISTANCE_KM;
 }
 
 async function assertRateLimit(uid) {
@@ -259,7 +248,7 @@ async function writeOrderAndBoard(orderPayload) {
   return orderRef.id;
 }
 
-exports.getPaymentConfig = functions.runWith(callableOpts).https.onCall(async (_data, context) => {
+exports.getPaymentConfig = functions.https.onCall(async (_data, context) => {
   requireAuth(context);
   const { keyId, enabled } = getRazorpayConfig();
   return {
@@ -268,7 +257,7 @@ exports.getPaymentConfig = functions.runWith(callableOpts).https.onCall(async (_
   };
 });
 
-exports.createPaymentOrder = functions.runWith(callableOpts).https.onCall(async (data, context) => {
+exports.createPaymentOrder = functions.https.onCall(async (data, context) => {
   requireAuth(context);
   const { enabled, keyId, keySecret } = getRazorpayConfig();
   if (!enabled) {
@@ -278,7 +267,7 @@ exports.createPaymentOrder = functions.runWith(callableOpts).https.onCall(async 
     );
   }
 
-  assertCampusLocation(data.latitude, data.longitude);
+  checkCampusLocation(data.latitude, data.longitude);
   await assertRateLimit(context.auth.uid);
 
   const scheduledFor = data.scheduled_for || null;
@@ -333,11 +322,11 @@ exports.createPaymentOrder = functions.runWith(callableOpts).https.onCall(async 
   };
 });
 
-exports.placeOrder = functions.runWith(callableOpts).https.onCall(async (data, context) => {
+exports.placeOrder = functions.https.onCall(async (data, context) => {
   requireAuth(context);
   const uid = context.auth.uid;
 
-  assertCampusLocation(data.latitude, data.longitude);
+  const isCampus = checkCampusLocation(data.latitude, data.longitude);
   await assertRateLimit(uid);
 
   let scheduledFor = data.scheduled_for || null;
@@ -427,7 +416,7 @@ exports.placeOrder = functions.runWith(callableOpts).https.onCall(async (data, c
     utr_number: utrNumber,
     razorpay_payment_id: razorpayPaymentId,
     scheduled_for: scheduledFor,
-    geo_verified: true,
+    geo_verified: isCampus,
   };
 
   const orderId = await writeOrderAndBoard(newOrder);
@@ -443,7 +432,7 @@ exports.placeOrder = functions.runWith(callableOpts).https.onCall(async (data, c
   return { orderId, token_number: tokenStr, payment_status: paymentStatus, total_amount: calculatedTotal };
 });
 
-exports.updateOrderStatus = functions.runWith(callableOpts).https.onCall(async (data, context) => {
+exports.updateOrderStatus = functions.https.onCall(async (data, context) => {
   await requireAdmin(context);
 
   const orderId = data.orderId;
@@ -526,7 +515,7 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
   res.json({ received: true });
 });
 
-exports.setStudentVerification = functions.runWith(callableOpts).https.onCall(async (data, context) => {
+exports.setStudentVerification = functions.https.onCall(async (data, context) => {
   await requireAdmin(context);
 
   const { userId, verificationStatus } = data;
@@ -539,7 +528,7 @@ exports.setStudentVerification = functions.runWith(callableOpts).https.onCall(as
 });
 
 /** Lightweight admin probe for clients (no emails in the Vite bundle). */
-exports.assertAdmin = functions.runWith(callableOpts).https.onCall(async (_data, context) => {
+exports.assertAdmin = functions.https.onCall(async (_data, context) => {
   await requireAdmin(context);
   // Ensure admins/{uid} exists for rules-based Storage/Firestore checks
   await db.collection("admins").doc(context.auth.uid).set(

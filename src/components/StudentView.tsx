@@ -402,24 +402,25 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
 
   const ensureLocation = async () => {
     if (coords) return coords;
-    return new Promise<{ latitude: number; longitude: number }>((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Geolocation is required to order from campus.'));
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const next = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          };
-          setCoords(next);
-          resolve(next);
-        },
-        () => reject(new Error('Enable location access to verify you are near PICT campus.')),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    });
+    if (!navigator.geolocation) return null;
+    try {
+      return await new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const next = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            };
+            setCoords(next);
+            resolve(next);
+          },
+          () => resolve(null),
+          { enableHighAccuracy: false, timeout: 4000, maximumAge: 120_000 }
+        );
+      });
+    } catch {
+      return null;
+    }
   };
 
   const submitOrder = async (paymentPayload: Record<string, unknown>) => {
@@ -432,8 +433,8 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
 
     const result = await placeOrderFn({
       items,
-      latitude: position.latitude,
-      longitude: position.longitude,
+      latitude: position?.latitude,
+      longitude: position?.longitude,
       scheduled_for: scheduleValue,
       ...paymentPayload,
     });
@@ -465,8 +466,8 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
       if (paymentProvider === 'razorpay' && razorpayKeyId) {
         const created = await createPaymentOrderFn({
           items: cart.map(i => ({ itemId: i.itemId, quantity: i.quantity })),
-          latitude: position.latitude,
-          longitude: position.longitude,
+          latitude: position?.latitude,
+          longitude: position?.longitude,
           scheduled_for: scheduleValue,
         });
         const orderData = created.data as {

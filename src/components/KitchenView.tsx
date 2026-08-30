@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, type User } from 'firebase/auth';
 import { auth, db, updateOrderStatusFn } from '../firebase';
 import { assertIsAdmin } from '../lib/adminAuth';
@@ -75,8 +75,7 @@ export default function KitchenView() {
       }
       const ok = await assertIsAdmin(currentUser);
       if (!ok) {
-        await signOut(auth);
-        setLoginError('Kitchen access requires an admin account.');
+        setLoginError('This screen is for canteen staff. Sign in with a staff account.');
         setUser(null);
       } else {
         setUser(currentUser);
@@ -122,6 +121,7 @@ export default function KitchenView() {
     setIsUpdating(orderId);
     setStatusError(null);
     const previous = snapshotBackupRef.current;
+    const current = previous.find(o => o.id === orderId);
 
     setOrders(prev => {
       const updated = nextStatus === 'COMPLETED'
@@ -131,15 +131,35 @@ export default function KitchenView() {
     });
 
     try {
-      await updateOrderStatusFn({
-        orderId,
-        status: nextStatus,
-        verifyPayment: nextStatus === 'PREPARING',
-      });
-    } catch (e: any) {
-      console.error('Status update failed:', e);
-      setOrders(previous);
-      setStatusError(e?.message || 'Failed to update order status');
+      // Direct Firestore writes (admin rules) — does not wait on Cloud Functions
+      const batch = writeBatch(db);
+      const orderUpdate: Record<string, unknown> = { status: nextStatus };
+      if (nextStatus === 'PREPARING') orderUpdate.payment_status = 'Verified';
+      batch.update(doc(db, 'orders', orderId), orderUpdate);
+
+      const boardRef = doc(db, 'displayBoard', orderId);
+      if (nextStatus === 'COMPLETED') {
+        batch.delete(boardRef);
+      } else {
+        batch.set(boardRef, {
+          token_number: current?.token_number || '',
+          status: nextStatus,
+          updated_at: serverTimestamp(),
+        }, { merge: true });
+      }
+      await batch.commit();
+    } catch (directErr) {
+      try {
+        await updateOrderStatusFn({
+          orderId,
+          status: nextStatus,
+          verifyPayment: nextStatus === 'PREPARING',
+        });
+      } catch (e: any) {
+        console.error('Status update failed:', directErr, e);
+        setOrders(previous);
+        setStatusError(e?.message || 'Failed to update order status');
+      }
     } finally {
       setIsUpdating(null);
     }
@@ -211,7 +231,7 @@ export default function KitchenView() {
       {/* Top Header Bar */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200/80">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+          <div className="w-11 h-11 rounded-xl bg-amber-500 text-white flex items-center justify-center">
             <ChefHat size={26} />
           </div>
           <div>
@@ -237,7 +257,7 @@ export default function KitchenView() {
               setSoundEnabled(!soundEnabled);
               if (!soundEnabled) playChime();
             }}
-            className={`px-3.5 py-2 rounded-full text-xs font-bold flex items-center gap-2 border transition-all google-touch google-ripple cursor-pointer ${
+            className={`px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 border ${
               soundEnabled
                 ? 'bg-blue-50 border-blue-200 text-blue-700'
                 : 'bg-white border-slate-200 text-slate-500'
@@ -260,14 +280,14 @@ export default function KitchenView() {
 
           <Link
             to="/admin"
-            className="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-full text-xs font-bold flex items-center gap-1.5 google-touch transition-all"
+            className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5"
           >
             <ShieldCheck size={14} className="text-blue-600" /> Manager
           </Link>
           <button
             type="button"
             onClick={() => signOut(auth)}
-            className="px-3.5 py-2 bg-white hover:bg-rose-50 border border-slate-200 text-rose-600 rounded-full text-xs font-bold flex items-center gap-1.5"
+            className="px-3 py-2 bg-white hover:bg-rose-50 border border-slate-200 text-rose-600 rounded-lg text-xs font-semibold flex items-center gap-1.5"
           >
             <LogOut size={14} /> Sign out
           </button>
@@ -275,7 +295,7 @@ export default function KitchenView() {
           <Link
             to="/live"
             target="_blank"
-            className="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-full text-xs font-bold flex items-center gap-1.5 google-touch transition-all"
+            className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5"
           >
             <ExternalLink size={14} /> TV Display
           </Link>
@@ -293,7 +313,7 @@ export default function KitchenView() {
       <div className="max-w-7xl mx-auto grid grid-cols-3 gap-3 my-5">
         <button
           onClick={() => setActiveTab('Pending')}
-          className={`p-3.5 sm:p-4 rounded-3xl border text-left transition-all google-touch cursor-pointer ${
+          className={`p-3 sm:p-4 rounded-xl border text-left ${
             activeTab === 'Pending' 
               ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-500/20 shadow-sm' 
               : 'bg-white border-slate-200/80 hover:border-slate-300'
@@ -309,7 +329,7 @@ export default function KitchenView() {
 
         <button
           onClick={() => setActiveTab('PREPARING')}
-          className={`p-3.5 sm:p-4 rounded-3xl border text-left transition-all google-touch cursor-pointer ${
+          className={`p-3 sm:p-4 rounded-xl border text-left ${
             activeTab === 'PREPARING' 
               ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-500/20 shadow-sm' 
               : 'bg-white border-slate-200/80 hover:border-slate-300'
@@ -325,7 +345,7 @@ export default function KitchenView() {
 
         <button
           onClick={() => setActiveTab('READY')}
-          className={`p-3.5 sm:p-4 rounded-3xl border text-left transition-all google-touch cursor-pointer ${
+          className={`p-3 sm:p-4 rounded-xl border text-left ${
             activeTab === 'READY' 
               ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-500/20 shadow-sm' 
               : 'bg-white border-slate-200/80 hover:border-slate-300'
@@ -361,7 +381,7 @@ export default function KitchenView() {
               return (
                 <div
                   key={order.id}
-                  className={`bg-white rounded-3xl border flex flex-col justify-between overflow-hidden transition-all shadow-md ${
+                  className={`bg-white rounded-xl border overflow-hidden ${
                     order.status === 'Pending'
                       ? 'border-amber-300'
                       : order.status === 'PREPARING'
@@ -441,7 +461,7 @@ export default function KitchenView() {
                       <button
                         onClick={() => advanceOrder(order.id, 'PREPARING')}
                         disabled={isUpdating === order.id}
-                        className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 google-touch google-ripple transition-all cursor-pointer disabled:opacity-50"
+                        className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                       >
                         <Flame size={18} />
                         <span>Start Cooking ➔</span>
@@ -452,7 +472,7 @@ export default function KitchenView() {
                       <button
                         onClick={() => advanceOrder(order.id, 'READY')}
                         disabled={isUpdating === order.id}
-                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 google-touch google-ripple transition-all cursor-pointer disabled:opacity-50"
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                       >
                         <CheckCircle2 size={18} />
                         <span>Mark Ready for Pickup ➔</span>
@@ -463,7 +483,7 @@ export default function KitchenView() {
                       <button
                         onClick={() => advanceOrder(order.id, 'COMPLETED')}
                         disabled={isUpdating === order.id}
-                        className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 google-touch google-ripple transition-all cursor-pointer disabled:opacity-50"
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                       >
                         <Check size={18} />
                         <span>Served & Clear Ticket ✓</span>

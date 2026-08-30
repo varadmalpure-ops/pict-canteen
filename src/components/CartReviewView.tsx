@@ -73,7 +73,7 @@ export default function CartReviewView({
     <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col font-sans animate-in fade-in duration-200">
       
       {/* Top Header Bar */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-200/80 px-4 py-3.5 shadow-2xs">
+      <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
@@ -446,7 +446,7 @@ export default function CartReviewView({
 
       {/* Bottom Sticky Action Bar */}
       {cart.length > 0 && (
-        <footer className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200/80 p-4 z-40 shadow-2xl">
+        <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 z-40">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
             <div>
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
@@ -460,7 +460,7 @@ export default function CartReviewView({
             <button
               onClick={onSubmit}
               disabled={isProcessing || !isCustomTimeValid}
-              className="flex-1 max-w-xs py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-black text-sm shadow-xl shadow-blue-600/20 google-touch google-ripple transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="flex-1 max-w-xs py-3.5 px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isProcessing ? (
                 <><Loader2 size={18} className="animate-spin" /> Placing Order...</>
