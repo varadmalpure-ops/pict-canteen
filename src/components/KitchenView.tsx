@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
 import type { Order } from '../types';
@@ -15,8 +15,11 @@ import {
   Check, 
   RefreshCw, 
   Search, 
-  Sparkles 
+  Sparkles,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const updateOrderStatusFn = httpsCallable(functions, 'updateOrderStatus');
 
@@ -32,7 +35,7 @@ export default function KitchenView() {
   const audioContextRef = useRef<AudioContext | null>(null);
 
   // Play chime for incoming tickets
-  const playChime = () => {
+  const playChime = useCallback(() => {
     if (!soundEnabled) return;
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -53,14 +56,26 @@ export default function KitchenView() {
       osc.start();
       osc.stop(ctx.currentTime + 0.4);
     } catch {}
-  };
+  }, [soundEnabled]);
 
+  // Fast index query: only active tickets
   useEffect(() => {
-    const q = query(collection(db, 'orders'), orderBy('created_at', 'desc'));
+    const q = query(
+      collection(db, 'orders'),
+      where('status', 'in', ['Pending', 'PREPARING', 'READY']),
+      limit(80)
+    );
+
     const unsub = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-      const activeList = list.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED');
+      const activeList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
       
+      // Sort oldest pending first, then preparing, then ready
+      activeList.sort((a, b) => {
+        const timeA = (a.created_at as any)?.toMillis ? (a.created_at as any).toMillis() : 0;
+        const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : 0;
+        return timeA - timeB;
+      });
+
       if (prevOrderCountRef.current > 0 && activeList.length > prevOrderCountRef.current) {
         playChime();
       }
@@ -73,10 +88,20 @@ export default function KitchenView() {
     });
 
     return () => unsub();
-  }, [soundEnabled]);
+  }, [playChime]);
 
+  // Instant Optimistic Status Advance in 0ms!
   const advanceOrder = async (orderId: string, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED') => {
     setIsUpdating(orderId);
+    
+    // 0ms Optimistic UI update
+    setOrders(prev => {
+      if (nextStatus === 'COMPLETED') {
+        return prev.filter(o => o.id !== orderId);
+      }
+      return prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o);
+    });
+
     try {
       await updateOrderStatusFn({ orderId, status: nextStatus });
     } catch (e: any) {
@@ -102,25 +127,26 @@ export default function KitchenView() {
   const readyOrders = useMemo(() => orders.filter(o => o.status === 'READY'), [orders]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-4 sm:p-6 pb-24">
+    <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-[#0f141c] text-slate-900 dark:text-slate-100 font-sans p-4 sm:p-6 pb-28 transition-colors duration-200">
       
-      {/* Top Header Bar */}
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+      {/* Top Header Bar - Matches App Title Bar Aesthetic */}
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200/80 dark:border-slate-800/80">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center">
-            <ChefHat size={28} />
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+            <ChefHat size={26} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
                 Kitchen Display Screen
               </h1>
-              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border border-emerald-500/30 animate-pulse">
+              <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border border-emerald-200/80 dark:border-emerald-800/60 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Live KDS
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              1-Tap tickets for cooks & counter staff
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              1-Tap order workflow for chefs & counter team
             </p>
           </div>
         </div>
@@ -132,91 +158,90 @@ export default function KitchenView() {
               setSoundEnabled(!soundEnabled);
               if (!soundEnabled) playChime();
             }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all ${
+            className={`px-3.5 py-2 rounded-full text-xs font-bold flex items-center gap-2 border transition-all google-touch google-ripple cursor-pointer ${
               soundEnabled
-                ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30'
-                : 'bg-slate-900 border-slate-800 text-slate-500'
+                ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                : 'bg-white dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-500'
             }`}
           >
-            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
             <span>{soundEnabled ? 'Chime ON' : 'Chime Muted'}</span>
           </button>
 
           <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
               value={searchToken}
               onChange={(e) => setSearchToken(e.target.value)}
               placeholder="Search token #..."
-              className="bg-slate-900 border border-slate-800 pl-9 pr-3 py-2 rounded-xl text-xs text-white placeholder:text-slate-500 outline-none focus:border-amber-500 transition-all font-mono"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 pl-9 pr-3.5 py-2 rounded-full text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-amber-500 transition-all font-mono font-semibold"
             />
           </div>
 
-          <a
-            href="/admin"
-            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-bold transition-colors"
+          <Link
+            to="/admin"
+            className="px-3.5 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold flex items-center gap-1.5 google-touch transition-all"
           >
-            Manager Panel ➔
-          </a>
+            <ShieldCheck size={14} className="text-blue-600 dark:text-blue-400" /> Manager
+          </Link>
 
-          <a
-            href="/live"
+          <Link
+            to="/live"
             target="_blank"
-            rel="noreferrer"
-            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-bold transition-colors"
+            className="px-3.5 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold flex items-center gap-1.5 google-touch transition-all"
           >
-            TV Display ↗
-          </a>
+            <ExternalLink size={14} /> TV Display
+          </Link>
         </div>
       </div>
 
-      {/* Metrics Row */}
+      {/* Metrics Row - Google Material Pill Switchers */}
       <div className="max-w-7xl mx-auto grid grid-cols-3 gap-3 my-5">
         <button
           onClick={() => setActiveTab('Pending')}
-          className={`p-3.5 sm:p-4 rounded-2xl border text-left transition-all ${
+          className={`p-3.5 sm:p-4 rounded-3xl border text-left transition-all google-touch cursor-pointer ${
             activeTab === 'Pending' 
-              ? 'bg-amber-500/15 border-amber-500/50 ring-1 ring-amber-500/30' 
-              : 'bg-slate-900/60 border-slate-800 hover:bg-slate-900'
+              ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700/60 ring-2 ring-amber-500/20 shadow-sm' 
+              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-slate-300'
           }`}
         >
-          <div className="text-[11px] font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+          <div className="text-[11px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
             <Clock size={14} /> New Orders
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-white mt-1">
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
             {pendingOrders.length}
           </div>
         </button>
 
         <button
           onClick={() => setActiveTab('PREPARING')}
-          className={`p-3.5 sm:p-4 rounded-2xl border text-left transition-all ${
+          className={`p-3.5 sm:p-4 rounded-3xl border text-left transition-all google-touch cursor-pointer ${
             activeTab === 'PREPARING' 
-              ? 'bg-blue-500/15 border-blue-500/50 ring-1 ring-blue-500/30' 
-              : 'bg-slate-900/60 border-slate-800 hover:bg-slate-900'
+              ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700/60 ring-2 ring-blue-500/20 shadow-sm' 
+              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-slate-300'
           }`}
         >
-          <div className="text-[11px] font-extrabold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
+          <div className="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
             <Flame size={14} /> Cooking Now
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-white mt-1">
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
             {preparingOrders.length}
           </div>
         </button>
 
         <button
           onClick={() => setActiveTab('READY')}
-          className={`p-3.5 sm:p-4 rounded-2xl border text-left transition-all ${
+          className={`p-3.5 sm:p-4 rounded-3xl border text-left transition-all google-touch cursor-pointer ${
             activeTab === 'READY' 
-              ? 'bg-emerald-500/15 border-emerald-500/50 ring-1 ring-emerald-500/30' 
-              : 'bg-slate-900/60 border-slate-800 hover:bg-slate-900'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700/60 ring-2 ring-emerald-500/20 shadow-sm' 
+              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-slate-300'
           }`}
         >
-          <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+          <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
             <CheckCircle2 size={14} /> Ready at Counter
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-white mt-1">
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
             {readyOrders.length}
           </div>
         </button>
@@ -225,15 +250,15 @@ export default function KitchenView() {
       {/* Ticket Cards Grid */}
       <div className="max-w-7xl mx-auto">
         {loading ? (
-          <div className="p-16 text-center text-slate-500 flex flex-col items-center gap-3">
-            <RefreshCw className="animate-spin text-amber-500" size={32} />
+          <div className="p-16 text-center text-slate-500 dark:text-slate-400 flex flex-col items-center gap-3">
+            <RefreshCw className="animate-spin text-blue-600 dark:text-blue-400" size={32} />
             <span className="font-bold text-sm">Loading live kitchen queue...</span>
           </div>
         ) : filteredOrders.length === 0 ? (
-          <div className="p-16 text-center text-slate-600 bg-slate-900/40 rounded-3xl border border-slate-900 my-6">
-            <Sparkles size={40} className="mx-auto mb-3 text-slate-700" />
-            <h3 className="font-bold text-slate-400 text-base">No active orders in this view</h3>
-            <p className="text-xs text-slate-600 mt-1">All tickets have been prepared and cleared!</p>
+          <div className="p-16 text-center text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 my-6 shadow-xs">
+            <Sparkles size={40} className="mx-auto mb-3 text-amber-500" />
+            <h3 className="font-bold text-slate-800 dark:text-slate-200 text-base">No active tickets in this view</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">All tickets have been prepared and served!</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -243,28 +268,34 @@ export default function KitchenView() {
               return (
                 <div
                   key={order.id}
-                  className={`bg-slate-900 rounded-3xl border flex flex-col justify-between overflow-hidden transition-all shadow-xl ${
+                  className={`bg-white dark:bg-slate-900 rounded-3xl border flex flex-col justify-between overflow-hidden transition-all shadow-md ${
                     order.status === 'Pending'
-                      ? 'border-amber-500/40 ring-1 ring-amber-500/20'
+                      ? 'border-amber-300 dark:border-amber-600/50'
                       : order.status === 'PREPARING'
-                      ? 'border-blue-500/40 ring-1 ring-blue-500/20'
-                      : 'border-emerald-500/40 ring-1 ring-emerald-500/20'
+                      ? 'border-blue-300 dark:border-blue-600/50'
+                      : 'border-emerald-300 dark:border-emerald-600/50'
                   }`}
                 >
                   {/* Card Header */}
-                  <div className="p-4 sm:p-5 border-b border-slate-800/80 bg-slate-900/90">
+                  <div className={`p-4 sm:p-5 border-b ${
+                    order.status === 'Pending'
+                      ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/40'
+                      : order.status === 'PREPARING'
+                      ? 'bg-blue-50/70 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/40'
+                      : 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/40'
+                  }`}>
                     <div className="flex items-center justify-between">
-                      <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white">
+                      <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 dark:text-white">
                         {order.token_number}
                       </span>
                       
                       {/* Status Tag */}
                       <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${
                         order.status === 'Pending'
-                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
                           : order.status === 'PREPARING'
-                          ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-                          : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                          ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                          : 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
                       }`}>
                         {order.status === 'Pending' ? '⏳ Received' : order.status === 'PREPARING' ? '🍳 Cooking' : '🔔 Ready'}
                       </span>
@@ -273,17 +304,17 @@ export default function KitchenView() {
                     {/* Payment & Schedule Meta */}
                     <div className="flex items-center justify-between mt-3 text-xs">
                       {isPaid ? (
-                        <span className="flex items-center gap-1.5 font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                        <span className="flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
                           <Check size={13} /> Paid ₹{order.total_amount}
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 animate-pulse">
+                        <span className="flex items-center gap-1.5 font-black text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800 animate-pulse">
                           <Banknote size={13} /> Collect ₹{order.total_amount}
                         </span>
                       )}
 
                       {order.scheduled_for && (
-                        <span className="text-slate-400 font-semibold bg-slate-800 px-2.5 py-1 rounded-lg text-[11px]">
+                        <span className="text-slate-600 dark:text-slate-300 font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg text-[11px]">
                           🕒 {order.scheduled_for}
                         </span>
                       )}
@@ -291,19 +322,19 @@ export default function KitchenView() {
                   </div>
 
                   {/* Items List */}
-                  <div className="p-4 sm:p-5 space-y-2.5 flex-1 bg-slate-900/50">
+                  <div className="p-4 sm:p-5 space-y-2.5 flex-1 bg-slate-50/40 dark:bg-slate-900/40">
                     {order.items?.map((item, idx) => (
                       <div key={idx} className="flex items-start justify-between gap-3 text-sm">
                         <div className="flex items-center gap-2.5">
-                          <span className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-300 font-black text-xs flex items-center justify-center shrink-0 border border-amber-500/30">
+                          <span className="w-6 h-6 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-black text-xs flex items-center justify-center shrink-0 border border-slate-300 dark:border-slate-700">
                             {item.quantity}x
                           </span>
-                          <span className="font-extrabold text-slate-100 leading-snug">
+                          <span className="font-extrabold text-slate-900 dark:text-slate-100 leading-snug">
                             {item.name}
                           </span>
                         </div>
                         {item.is_express && (
-                          <span className="text-[10px] uppercase font-black text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
+                          <span className="text-[10px] uppercase font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800 shrink-0">
                             ⚡ Express
                           </span>
                         )}
@@ -312,12 +343,12 @@ export default function KitchenView() {
                   </div>
 
                   {/* 1-Tap Action Button */}
-                  <div className="p-3 sm:p-4 bg-slate-950/80 border-t border-slate-800/80">
+                  <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
                     {order.status === 'Pending' && (
                       <button
                         onClick={() => advanceOrder(order.id, 'PREPARING')}
                         disabled={isUpdating === order.id}
-                        className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                        className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 google-touch google-ripple transition-all cursor-pointer disabled:opacity-50"
                       >
                         <Flame size={18} />
                         <span>Start Cooking ➔</span>
@@ -328,7 +359,7 @@ export default function KitchenView() {
                       <button
                         onClick={() => advanceOrder(order.id, 'READY')}
                         disabled={isUpdating === order.id}
-                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 google-touch google-ripple transition-all cursor-pointer disabled:opacity-50"
                       >
                         <CheckCircle2 size={18} />
                         <span>Mark Ready for Pickup ➔</span>
@@ -339,7 +370,7 @@ export default function KitchenView() {
                       <button
                         onClick={() => advanceOrder(order.id, 'COMPLETED')}
                         disabled={isUpdating === order.id}
-                        className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                        className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 google-touch google-ripple transition-all cursor-pointer disabled:opacity-50"
                       >
                         <Check size={18} />
                         <span>Served & Clear Ticket ✓</span>

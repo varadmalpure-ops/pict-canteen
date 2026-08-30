@@ -59,20 +59,30 @@ async function validateAndPriceItems(items) {
     throw new functions.https.HttpsError("invalid-argument", "Too many line items.");
   }
 
+  const validInputs = items.filter(
+    (item) => item && typeof item.itemId === "string" && Number.isInteger(Number(item.quantity)) && Number(item.quantity) >= 1 && Number(item.quantity) <= MAX_LINE_QUANTITY
+  );
+
+  if (validInputs.length === 0) {
+    throw new functions.https.HttpsError("invalid-argument", "No valid items in the order.");
+  }
+
+  // Fetch all menu items in parallel for instant order speed
+  const menuSnaps = await Promise.all(
+    validInputs.map((i) => db.collection("menuItems").doc(i.itemId).get())
+  );
+
   let calculatedTotal = 0;
   const validatedItems = [];
   let allExpress = true;
 
-  for (const item of items) {
-    if (!item || typeof item.itemId !== "string") continue;
-    const quantity = Number(item.quantity);
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_LINE_QUANTITY) {
-      throw new functions.https.HttpsError("invalid-argument", "Invalid item quantity.");
-    }
+  for (let i = 0; i < validInputs.length; i++) {
+    const itemInput = validInputs[i];
+    const quantity = Number(itemInput.quantity);
+    const menuDoc = menuSnaps[i];
 
-    const menuDoc = await db.collection("menuItems").doc(item.itemId).get();
     if (!menuDoc.exists) {
-      throw new functions.https.HttpsError("not-found", `Item ${item.itemId} not found.`);
+      throw new functions.https.HttpsError("not-found", `Item ${itemInput.itemId} not found.`);
     }
 
     const menuData = menuDoc.data();
@@ -90,19 +100,12 @@ async function validateAndPriceItems(items) {
 
     calculatedTotal += price * quantity;
     validatedItems.push({
-      itemId: item.itemId,
+      itemId: itemInput.itemId,
       name: menuData.name,
       price,
       quantity,
       is_express: Boolean(menuData.is_express),
     });
-  }
-
-  if (validatedItems.length === 0) {
-    throw new functions.https.HttpsError("invalid-argument", "No valid items in the order.");
-  }
-  if (calculatedTotal < 0) {
-    throw new functions.https.HttpsError("invalid-argument", "Order total must be non-negative.");
   }
 
   return { validatedItems, calculatedTotal, allExpress };

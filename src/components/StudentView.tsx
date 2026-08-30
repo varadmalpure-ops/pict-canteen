@@ -48,25 +48,6 @@ function loadRazorpayScript(): Promise<boolean> {
   });
 }
 
-async function getFreshLocation(): Promise<{ latitude: number; longitude: number }> {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      resolve({ latitude: 18.4584975, longitude: 73.8512198 });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-      },
-      () => resolve({ latitude: 18.4584975, longitude: 73.8512198 }),
-      { enableHighAccuracy: false, timeout: 3000, maximumAge: 300000 }
-    );
-  });
-}
-
 export default function StudentView() {
   // Instant cache-first menu initialization for 0ms visual render
   const [menu, setMenu] = useState<MenuItem[]>(() => {
@@ -368,13 +349,7 @@ export default function StudentView() {
   const scheduleValue = scheduledFor === 'now' ? null : (scheduledFor === 'custom' ? (customTime ? formatTime12h(customTime) : null) : scheduledFor);
 
   const submitOrder = async (paymentPayload: Record<string, unknown>) => {
-    let position = coords;
-    try {
-      if (!position) position = await getFreshLocation();
-    } catch {
-      position = { latitude: 18.4584975, longitude: 73.8512198 };
-    }
-    setCoords(position);
+    const position = coords || { latitude: 18.4584975, longitude: 73.8512198 };
 
     const items = cart.map(item => ({
       itemId: item.itemId,
