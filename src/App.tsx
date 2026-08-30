@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -11,8 +11,7 @@ import LiveDisplay from './components/LiveDisplay';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import StudentAuth from './components/StudentAuth';
 import StudentProfile from './components/StudentProfile';
-import { UserCircle, LogOut, Menu, X } from 'lucide-react';
-
+import Navbar from './components/Navbar';
 
 function isBootstrapAdminEmail(email: string | null): boolean {
   if (!email) return false;
@@ -25,7 +24,6 @@ function isBootstrapAdminEmail(email: string | null): boolean {
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -35,7 +33,6 @@ function App() {
         setLoading(false);
       } else if (currentUser) {
         try {
-          // If admin, allow immediately
           if (isBootstrapAdminEmail(currentUser.email)) {
             setUser(currentUser);
             setLoading(false);
@@ -75,7 +72,6 @@ function App() {
               sessionStorage.removeItem('pendingReg');
               setUser(currentUser);
             } else {
-              // Auto-create verified profile for Google Sign-In
               await setDoc(userDocRef, {
                 uid: currentUser.uid,
                 email: currentUser.email || '',
@@ -102,55 +98,21 @@ function App() {
   }, []);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-gray-50">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <span className="font-bold text-xs text-slate-500">Loading PICT Canteen...</span>
+        </div>
+      </div>
+    );
   }
 
   return (
     <Router>
       <PWAInstallPrompt />
-      <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-        <header className="bg-white shadow-sm sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold text-2xl shadow-inner shrink-0">
-                P
-              </div>
-              <div className="flex flex-col">
-                <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-blue-500 leading-tight">
-                  PICT CANTEEN
-                </h1>
-                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                  Management By: AP CATERERS
-                </span>
-              </div>
-            </Link>
-            <button
-              className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-
-            <nav className={`${isMenuOpen ? 'flex' : 'hidden'} md:flex flex-col md:flex-row absolute md:relative top-16 md:top-0 left-0 w-full md:w-auto bg-white md:bg-transparent shadow-lg md:shadow-none p-4 md:p-0 gap-4 md:items-center z-40 border-t md:border-t-0 border-gray-100`}>
-              <Link to="/" onClick={() => setIsMenuOpen(false)} className="text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors p-2 md:p-0 rounded-lg hover:bg-gray-50 md:hover:bg-transparent">
-                Order Here
-              </Link>
-              <Link to="/live" onClick={() => setIsMenuOpen(false)} className="text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors p-2 md:p-0 rounded-lg hover:bg-gray-50 md:hover:bg-transparent">
-                Live TV
-              </Link>
-              {user && (
-                <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-3 md:border-l md:border-gray-200 md:pl-4 md:ml-2 pt-4 md:pt-0 border-t md:border-t-0 border-gray-100">
-                  <Link to="/profile" onClick={() => setIsMenuOpen(false)} className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-2 p-2 md:p-0 rounded-lg hover:bg-blue-50 md:hover:bg-transparent">
-                    <UserCircle size={18} /> My Profile
-                  </Link>
-                  <button onClick={() => { signOut(auth); setIsMenuOpen(false); }} className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors flex items-center gap-2 text-left p-2 md:p-0 rounded-lg hover:bg-red-50 md:hover:bg-transparent">
-                    <LogOut size={18} /> Logout
-                  </button>
-                </div>
-              )}
-            </nav>
-          </div>
-        </header>
+      <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans text-slate-900">
+        <Navbar user={user} />
 
         <main className="flex-1 w-full">
           <Routes>
