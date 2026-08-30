@@ -496,33 +496,33 @@ export default function StudentView() {
 
   if (loading) {
     return (
-      <div className="flex flex-col h-[calc(100vh-4rem)] items-center justify-center text-slate-500 dark:text-slate-400 gap-3">
-        <Loader2 className="animate-spin text-blue-600 dark:text-blue-400" size={32} />
+      <div className="flex flex-col h-[calc(100vh-4rem)] items-center justify-center text-slate-500 gap-3">
+        <Loader2 className="animate-spin text-blue-600" size={32} />
         <span className="font-bold text-xs">Loading PICT canteen menu...</span>
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 pb-36 transition-colors duration-200">
+    <div className="max-w-3xl mx-auto px-4 pb-36">
       
-      {/* Sticky Google-styled Search Bar & Category Chips - DOCKED FLUSH under Navbar (Zero Gap!) */}
-      <div className="sticky top-16 z-30 bg-slate-50/95 dark:bg-[#0f141c]/95 backdrop-blur-xl pt-2 pb-3 mb-4 border-b border-slate-200/60 dark:border-slate-800/60 -mx-4 px-4 transition-colors">
+      {/* Sticky Search Bar & Category Chips */}
+      <div className="sticky top-16 z-30 bg-slate-50/95 backdrop-blur-xl pt-2 pb-3 mb-4 border-b border-slate-200/60 -mx-4 px-4">
         <div className="relative mb-2.5">
           <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-            <Search size={17} className="text-blue-600 dark:text-blue-400" />
+            <Search size={17} className="text-blue-600" />
           </div>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search samosa, cold coffee, noodles, thali..."
-            className="w-full bg-white dark:bg-slate-900 pl-11 pr-10 py-3 rounded-full text-xs font-semibold text-slate-900 dark:text-white outline-none border border-slate-200/90 dark:border-slate-800 shadow-sm focus:border-blue-500 dark:focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
+            className="w-full bg-white pl-11 pr-10 py-3 rounded-full text-xs font-semibold text-slate-900 outline-none border border-slate-200/90 shadow-sm focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 google-touch cursor-pointer"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 google-touch cursor-pointer"
               aria-label="Clear search"
             >
               <X size={15} />
@@ -530,7 +530,7 @@ export default function StudentView() {
           )}
         </div>
 
-        {/* Horizontal Category Filter Pills (Google Pill Style - full width non-clipped) */}
+        {/* Horizontal Category Filter Pills */}
         <div className="flex gap-2.5 overflow-x-auto py-1.5 px-0.5 text-xs no-scrollbar scroll-smooth items-center">
           {categories.map(cat => (
             <button
@@ -538,8 +538,8 @@ export default function StudentView() {
               onClick={() => setSelectedCategory(cat)}
               className={`shrink-0 inline-flex items-center justify-center px-4 py-2 rounded-full font-bold text-xs whitespace-nowrap leading-none transition-all google-touch google-ripple cursor-pointer select-none ${
                 selectedCategory === cat
-                  ? 'bg-blue-600 dark:bg-blue-600 text-white shadow-sm shadow-blue-500/30 ring-1 ring-blue-600'
-                  : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300/80 dark:hover:bg-slate-700'
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30 ring-1 ring-blue-600'
+                  : 'bg-slate-200/80 text-slate-700 hover:bg-slate-300/80'
               }`}
             >
               {cat === 'ALL' ? '🌟 All Dishes' : cat}
@@ -551,7 +551,7 @@ export default function StudentView() {
       {/* Live Rush Meter */}
       <RushMeter queueCount={queueCount} />
 
-      {/* 1-Tap Repeat Order Banner - Fixed & Stable */}
+      {/* 1-Tap Repeat Order Banner */}
       {lastOrder && lastOrder.items && (
         <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 text-white p-4 rounded-2xl mb-5 flex items-center justify-between shadow-lg shadow-blue-500/15">
           <div className="flex items-center gap-3">
@@ -581,7 +581,7 @@ export default function StudentView() {
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-3.5 px-1">
             <Sparkles size={16} className="text-amber-500" />
-            <h3 className="font-extrabold text-sm text-slate-900 dark:text-white tracking-tight">
+            <h3 className="font-extrabold text-sm text-slate-900 tracking-tight">
               Recommended For You
             </h3>
           </div>
@@ -602,10 +602,10 @@ export default function StudentView() {
 
       {/* Dishes by Category */}
       {filteredMenu.length === 0 ? (
-        <div className="p-12 text-center text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 my-4">
-          <UtensilsCrossed size={36} className="mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-          <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm">No dishes found</h4>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Try another search keyword or select All Dishes.</p>
+        <div className="p-12 text-center text-slate-400 bg-white rounded-3xl border border-slate-200/80 my-4">
+          <UtensilsCrossed size={36} className="mx-auto mb-2 text-slate-300" />
+          <h4 className="font-bold text-slate-700 text-sm">No dishes found</h4>
+          <p className="text-xs text-slate-400 mt-1">Try another search keyword or select All Dishes.</p>
         </div>
       ) : (
         <div className="space-y-7">
@@ -615,9 +615,9 @@ export default function StudentView() {
 
             return (
               <div key={category}>
-                <div className="flex justify-between items-baseline mb-3 px-1 border-b border-slate-200/70 dark:border-slate-800/70 pb-2">
-                  <h3 className="font-black text-sm text-slate-900 dark:text-white tracking-tight">{category}</h3>
-                  <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{categoryItems.length} items</span>
+                <div className="flex justify-between items-baseline mb-3 px-1 border-b border-slate-200/70 pb-2">
+                  <h3 className="font-black text-sm text-slate-900 tracking-tight">{category}</h3>
+                  <span className="text-[11px] font-bold text-slate-400">{categoryItems.length} items</span>
                 </div>
                 <div className="grid gap-2.5">
                   {categoryItems.map(item => (
@@ -637,7 +637,7 @@ export default function StudentView() {
         </div>
       )}
 
-      {/* Floating Dynamic Cart Capsule (Google Pill style with elevation) */}
+      {/* Floating Dynamic Cart Capsule */}
       {cart.length > 0 && (
         <div className="fixed bottom-5 left-0 right-0 px-4 z-30 pointer-events-none">
           <div className="max-w-md mx-auto pointer-events-auto">
@@ -646,15 +646,15 @@ export default function StudentView() {
                 fetchPaymentConfig();
                 setIsPaymentModalOpen(true);
               }}
-              className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-black dark:hover:bg-blue-700 text-white rounded-full p-3.5 px-5 flex items-center justify-between shadow-2xl shadow-slate-900/30 dark:shadow-blue-600/30 google-touch google-ripple transition-all cursor-pointer"
+              className="w-full bg-slate-900 hover:bg-black text-white rounded-full p-3.5 px-5 flex items-center justify-between shadow-2xl shadow-slate-900/30 google-touch google-ripple transition-all cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 dark:bg-white/20 text-white flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
                   <ShoppingCart size={16} />
                 </div>
                 <div className="text-left">
                   <span className="font-bold text-xs block">{totalCartCount} item{totalCartCount > 1 ? 's' : ''} in cart</span>
-                  <span className="text-[11px] text-slate-300 dark:text-blue-100 font-medium">
+                  <span className="text-[11px] text-slate-300 font-medium">
                     {paymentProvider === 'pay_at_counter' ? 'Pay at Counter' : 'Online Payment'}
                   </span>
                 </div>
@@ -679,7 +679,7 @@ export default function StudentView() {
           aria-label="View active orders"
         >
           <Receipt size={22} />
-          <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[11px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-white dark:border-slate-900">
+          <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[11px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-white">
             {activeOrders.length}
           </span>
         </button>

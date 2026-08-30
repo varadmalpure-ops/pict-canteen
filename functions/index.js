@@ -8,9 +8,25 @@ const db = admin.firestore();
 const PICT_LAT = 18.4584975;
 const PICT_LON = 73.8512198;
 const MAX_DISTANCE_KM = 2.0;
-const MIN_ORDER_INTERVAL_MS = 30_000;
+const MIN_ORDER_INTERVAL_MS = 1_000;
 const MAX_ITEMS_PER_ORDER = 30;
 const MAX_LINE_QUANTITY = 20;
+
+let menuCache = null;
+let menuCacheTime = 0;
+
+async function getCachedMenu() {
+  const now = Date.now();
+  if (menuCache && (now - menuCacheTime < 30_000)) {
+    return menuCache;
+  }
+  const snap = await db.collection("menuItems").get();
+  const map = new Map();
+  snap.docs.forEach(doc => map.set(doc.id, { id: doc.id, ...doc.data() }));
+  menuCache = map;
+  menuCacheTime = now;
+  return map;
+}
 
 function deg2rad(deg) {
   return deg * (Math.PI / 180);
@@ -38,11 +54,16 @@ function requireAuth(context) {
 }
 
 function getRazorpayConfig() {
-  const cfg = functions.config().razorpay || {};
-  const keyId = cfg.key_id || process.env.RAZORPAY_KEY_ID || "";
-  const keySecret = cfg.key_secret || process.env.RAZORPAY_KEY_SECRET || "";
-  const webhookSecret = cfg.webhook_secret || process.env.RAZORPAY_WEBHOOK_SECRET || "";
-  return { keyId, keySecret, webhookSecret, enabled: Boolean(keyId && keySecret) };
+  const rzp = functions.config().razorpay || {};
+  const keyId = process.env.RAZORPAY_KEY_ID || rzp.key_id || "";
+  const keySecret = process.env.RAZORPAY_KEY_SECRET || rzp.key_secret || "";
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || rzp.webhook_secret || "";
+  return {
+    enabled: Boolean(keyId && keySecret),
+    keyId,
+    keySecret,
+    webhookSecret,
+  };
 }
 
 function verifyRazorpaySignature(orderId, paymentId, signature, secret) {
@@ -71,25 +92,29 @@ async function validateAndPriceItems(items) {
     throw new functions.https.HttpsError("invalid-argument", "No valid items in the order.");
   }
 
-  // Fetch all menu items in parallel for instant order speed
-  const menuSnaps = await Promise.all(
-    validInputs.map((i) => db.collection("menuItems").doc(i.itemId).get())
-  );
+  const menuMap = await getCachedMenu();
 
   let calculatedTotal = 0;
   const validatedItems = [];
   let allExpress = true;
 
-  for (let i = 0; i < validInputs.length; i++) {
-    const itemInput = validInputs[i];
+  for (const itemInput of validInputs) {
     const quantity = Number(itemInput.quantity);
-    const menuDoc = menuSnaps[i];
+    let menuData = menuMap.get(itemInput.itemId);
 
-    if (!menuDoc.exists) {
+    // If cache miss for freshly added item, fallback to direct doc read
+    if (!menuData) {
+      const freshSnap = await db.collection("menuItems").doc(itemInput.itemId).get();
+      if (freshSnap.exists) {
+        menuData = { id: freshSnap.id, ...freshSnap.data() };
+        menuMap.set(itemInput.itemId, menuData);
+      }
+    }
+
+    if (!menuData) {
       throw new functions.https.HttpsError("not-found", `Item ${itemInput.itemId} not found.`);
     }
 
-    const menuData = menuDoc.data();
     if (!menuData.is_available) {
       throw new functions.https.HttpsError(
         "failed-precondition",
@@ -308,14 +333,6 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
     const uid = context.auth.uid;
 
     const isCampus = checkCampusLocation(data.latitude, data.longitude);
-    await assertRateLimit(uid);
-
-    const { enabled, keySecret } = getRazorpayConfig();
-    let paymentStatus = "Pay at Counter";
-    let paymentMethod = "Pay at Counter";
-    let utrNumber = "COUNTER_PAY";
-    let razorpayPaymentId = null;
-    let itemsSource = data.items || [];
 
     // Validate scheduled_for: must be null or valid time between 9:00 AM and 6:00 PM
     const scheduledFor = data.scheduled_for || null;
@@ -323,13 +340,27 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
       throw new functions.https.HttpsError("invalid-argument", "Pickup time must be between 9:00 AM and 6:00 PM.");
     }
 
-    const { validatedItems, calculatedTotal, allExpress } = enabled && data.razorpay_payment_id
-      ? {
-          validatedItems: itemsSource,
-          calculatedTotal: itemsSource.reduce((s, i) => s + i.price * i.quantity, 0),
-          allExpress: itemsSource.every((i) => i.is_express),
-        }
-      : await validateAndPriceItems(itemsSource);
+    const { enabled, keySecret } = getRazorpayConfig();
+    let itemsSource = data.items || [];
+
+    // Parallel validation and pricing
+    const [, pricedResult] = await Promise.all([
+      assertRateLimit(uid),
+      enabled && data.razorpay_payment_id
+        ? Promise.resolve({
+            validatedItems: itemsSource,
+            calculatedTotal: itemsSource.reduce((s, i) => s + i.price * i.quantity, 0),
+            allExpress: itemsSource.every((i) => i.is_express),
+          })
+        : validateAndPriceItems(itemsSource)
+    ]);
+
+    const { validatedItems, calculatedTotal, allExpress } = pricedResult;
+
+    let paymentStatus = "Pay at Counter";
+    let paymentMethod = "Pay at Counter";
+    let utrNumber = "COUNTER_PAY";
+    let razorpayPaymentId = null;
 
     if (calculatedTotal === 0 || data.payment_method === "FREE_SAMPLE_TEST") {
       paymentStatus = "Verified";

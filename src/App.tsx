@@ -80,12 +80,12 @@ function App() {
     <ThemeProvider>
       <Router>
         <PWAInstallPrompt />
-        <div className="min-h-screen bg-slate-50 dark:bg-[#0f141c] flex flex-col font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
           <Navbar user={user} />
 
           <main className="flex-1 w-full">
             <Suspense fallback={
-              <div className="flex items-center justify-center p-12 text-slate-400 dark:text-slate-500 font-semibold text-xs">
+              <div className="flex items-center justify-center p-12 text-slate-400 font-semibold text-xs">
                 Loading screen...
               </div>
             }>

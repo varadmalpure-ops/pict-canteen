@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 @theme {
   --color-primary-50: #eff6ff;
   --color-primary-100: #dbeafe;
@@ -19,13 +17,13 @@
 
 @layer base {
   html {
-    color-scheme: light dark;
+    color-scheme: light;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 dark:bg-[#0f141c] dark:text-slate-100 antialiased transition-colors duration-200;
+    @apply bg-slate-50 text-slate-900 antialiased;
     touch-action: manipulation;
   }
 

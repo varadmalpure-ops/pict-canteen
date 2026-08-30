@@ -39,8 +39,22 @@ async function assertIsAdmin(currentUser: User): Promise<boolean> {
 }
 
 export default function AdminView() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>(() => {
+    try {
+      const cached = localStorage.getItem('pict_admin_orders_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [menu, setMenu] = useState<MenuItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('pict_canteen_menu_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [tab, setTab] = useState<'INVENTORY' | 'ORDERS' | 'ANALYTICS'>('INVENTORY');
   const [searchMenu, setSearchMenu] = useState('');
 
@@ -92,6 +106,9 @@ export default function AdminView() {
     const unsubOrders = onSnapshot(q, (snapshot) => {
       const allOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order));
       setOrders(allOrders);
+      try {
+        localStorage.setItem('pict_admin_orders_cache', JSON.stringify(allOrders));
+      } catch {}
     });
 
     const unsubMenu = onSnapshot(menuItemsCollection, (snapshot) => {
@@ -102,6 +119,9 @@ export default function AdminView() {
         return (a.name || '').localeCompare(b.name || '');
       });
       setMenu(items);
+      try {
+        localStorage.setItem('pict_canteen_menu_cache', JSON.stringify(items));
+      } catch {}
     });
 
     return () => {
