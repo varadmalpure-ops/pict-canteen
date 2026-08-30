@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { uploadUserImage } from './lib/userPhotos';
 import StudentView from './components/StudentView';
@@ -12,6 +12,21 @@ import PWAInstallPrompt from './components/PWAInstallPrompt';
 import StudentAuth from './components/StudentAuth';
 import StudentProfile from './components/StudentProfile';
 import { UserCircle, LogOut, Menu, X } from 'lucide-react';
+
+// Fix 2 — Admin route guard: only authenticated non-anonymous users reach AdminView
+function AdminRoute() {
+  const [checking, setChecking] = useState(true);
+  const [allowed, setAllowed] = useState(false);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setAllowed(!!u && !u.isAnonymous);
+      setChecking(false);
+    });
+    return unsub;
+  }, []);
+  if (checking) return <div className="min-h-screen flex items-center justify-center bg-gray-50">Loading...</div>;
+  return allowed ? <AdminView /> : <Navigate to="/" replace />;
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -31,7 +46,8 @@ function App() {
           if (docSnap.exists()) {
             setUser(currentUser);
           } else {
-            const pendingRegStr = localStorage.getItem('pendingReg');
+            // Fix 6 — read from sessionStorage (cleared on tab close, not shared across sessions)
+            const pendingRegStr = sessionStorage.getItem('pendingReg');
             if (pendingRegStr) {
               const pendingReg = JSON.parse(pendingRegStr);
               if (pendingReg.pnr && pendingReg.idDataUrl && pendingReg.selfieDataUrl) {
@@ -46,24 +62,24 @@ function App() {
                   idPhotoPath,
                   selfiePath,
                   verificationStatus: 'pending',
-                  created_at: new Date().toISOString()
+                  created_at: serverTimestamp() // Fix 8 — use server clock, not client clock
                 });
-                localStorage.removeItem('pendingReg');
+                sessionStorage.removeItem('pendingReg');
                 setUser(currentUser);
               } else {
-                localStorage.setItem('authError', 'Registration incomplete. Please register with ID and selfie.');
+                sessionStorage.setItem('authError', 'Registration incomplete. Please register with ID and selfie.');
                 await signOut(auth);
                 setUser(null);
               }
             } else {
-              localStorage.setItem('authError', 'No account found. Please register first.');
+              sessionStorage.setItem('authError', 'No account found. Please register first.');
               await signOut(auth);
               setUser(null);
             }
           }
         } catch (e: any) {
           console.error('Firestore Error:', e);
-          localStorage.setItem('authError', e.message || 'Error saving profile. Please try again.');
+          sessionStorage.setItem('authError', e.message || 'Error saving profile. Please try again.');
           await signOut(auth);
           setUser(null);
         }
@@ -132,7 +148,7 @@ function App() {
           <Routes>
             <Route path="/" element={user ? <StudentView /> : <StudentAuth />} />
             <Route path="/profile" element={user ? <StudentProfile /> : <Navigate to="/" />} />
-            <Route path="/admin" element={<AdminView />} />
+            <Route path="/admin" element={<AdminRoute />} /> {/* Fix 2 — guarded route */}
             <Route path="/display" element={<CanteenQRCode url={window.location.origin} />} />
             <Route path="/live" element={<LiveDisplay />} />
           </Routes>

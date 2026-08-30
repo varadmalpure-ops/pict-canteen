@@ -84,5 +84,10 @@ service cloud.firestore {
       allow read: if request.auth != null && resource.data.uid == request.auth.uid;
       allow write: if false;
     }
+
+    // UTR deduplication ledger — written only by Cloud Functions via Admin SDK
+    match /usedUTRs/{utr} {
+      allow read, write: if false;
+    }
   }
 }

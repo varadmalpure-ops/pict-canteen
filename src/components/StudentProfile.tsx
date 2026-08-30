@@ -5,9 +5,21 @@ import { updatePassword } from 'firebase/auth';
 import { Loader2, Camera, User, Lock, CheckCircle2, Clock } from 'lucide-react';
 import { uploadUserImage, getUserImageUrl } from '../lib/userPhotos';
 
+interface UserProfile {
+  uid: string;
+  email: string;
+  pnr: string;
+  dob: string;
+  idPhotoPath?: string;
+  selfiePath?: string;
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  created_at: unknown;
+  lastOrderAt?: unknown;
+}
+
 export default function StudentProfile() {
   const [loading, setLoading] = useState(true);
-  const [profileData, setProfileData] = useState<any>(null);
+  const [profileData, setProfileData] = useState<UserProfile | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
@@ -20,7 +32,7 @@ export default function StudentProfile() {
         const docRef = doc(db, 'users', auth.currentUser.uid);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          const data = docSnap.data();
+          const data = docSnap.data() as UserProfile;
           setProfileData(data);
           const path = data.idPhotoPath || data.selfiePath;
           if (path) {

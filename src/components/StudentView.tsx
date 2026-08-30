@@ -512,8 +512,11 @@ export default function StudentView() {
             <div className="bg-gray-50 p-4 rounded-2xl mb-6 border border-gray-100">
               <div className="flex items-center gap-2 text-gray-700 mb-3">
                 <Users size={20} />
-                <span className="font-medium">Bill Splitting</span>
+                <span className="font-medium">Bill Split Calculator</span>
               </div>
+              <p className="text-xs text-amber-600 mb-2 font-medium">
+                ⚠️ The full order amount is always charged. This tool only shows how to split it between friends.
+              </p>
               <div className="flex bg-gray-200/50 p-1 rounded-xl gap-1 mb-3">
                 {(['NONE', 'EQUAL', 'CUSTOM'] as const).map(mode => (
                   <button key={mode} onClick={() => setSplitMode(mode)} className={`flex-1 py-1.5 text-xs font-semibold rounded-lg ${splitMode === mode ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
