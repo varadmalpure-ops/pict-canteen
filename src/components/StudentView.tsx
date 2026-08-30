@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { onSnapshot, query, where, getDocs, documentId, limit } from 'firebase/firestore';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import { onSnapshot, query, where, getDocs, documentId, limit, getCountFromServer } from 'firebase/firestore';
 import {
   menuItemsCollection,
   ordersCollection,
@@ -15,16 +15,17 @@ import {
   Search,
   RotateCcw,
   Sparkles,
-  Receipt,
   X,
   Loader2,
   UtensilsCrossed,
 } from 'lucide-react';
 import DishCard from './DishCard';
 import RushMeter from './RushMeter';
-import CartReviewView from './CartReviewView';
 import OrderTrackerModal from './OrderTrackerModal';
 import { formatTime12h } from '../lib/timeUtils';
+
+const CartReviewView = lazy(() => import('./CartReviewView'));
+
 
 declare global {
   interface Window {
@@ -135,23 +136,8 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
   const [orderNotice, setOrderNotice] = useState<string | null>(null);
   const paymentConfigLoaded = useRef(false);
 
-  // Background geolocation prefetch (no campus-coord spoof fallback)
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setCoords({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60_000 }
-      );
-    }
-  }, []);
-
-  // Fetch Menu synchronously & fast with localStorage caching
+  // Geolocation only when needed at checkout (avoid competing with first paint)
+  // Menu: live snapshot for availability, but UI paints instantly from cache
   useEffect(() => {
     const unsubscribeMenu = onSnapshot(menuItemsCollection, (snapshot) => {
       const items = snapshot.docs
@@ -175,63 +161,91 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
 
   const pastOrdersLoadedRef = useRef(false);
 
-  // Fetch Past Orders independently once
+  // Defer past-order / recs work until after first paint
   useEffect(() => {
     if (!auth.currentUser || auth.currentUser.isAnonymous || menu.length === 0 || pastOrdersLoadedRef.current) return;
     pastOrdersLoadedRef.current = true;
-    
-    async function loadPastOrders() {
-      try {
-        const pastOrdersQ = query(ordersCollection, where('uid', '==', auth.currentUser!.uid), limit(5));
-        const pastOrdersSnap = await getDocs(pastOrdersQ);
-        const itemFreq: Record<string, number> = {};
-        const pastList: Order[] = [];
-        pastOrdersSnap.forEach(d => {
-          const orderData = { id: d.id, ...d.data() } as Order;
-          pastList.push(orderData);
-          orderData.items?.forEach(item => {
-            itemFreq[item.itemId] = (itemFreq[item.itemId] || 0) + item.quantity;
-          });
-        });
 
-        const sortedIds = Object.keys(itemFreq).sort((a, b) => itemFreq[b] - itemFreq[a]).slice(0, 3);
-        const recs = menu.filter(i => sortedIds.includes(i.id) && i.is_available);
-        setRecommendations(recs);
-        cacheWrite('pict_recommendations_cache', recs);
+    const run = () => {
+      (async () => {
+        try {
+          const pastOrdersQ = query(ordersCollection, where('uid', '==', auth.currentUser!.uid), limit(5));
+          const pastOrdersSnap = await getDocs(pastOrdersQ);
+          const itemFreq: Record<string, number> = {};
+          const pastList: Order[] = [];
+          pastOrdersSnap.forEach(d => {
+            const orderData = { id: d.id, ...d.data() } as Order;
+            pastList.push(orderData);
+            orderData.items?.forEach(item => {
+              itemFreq[item.itemId] = (itemFreq[item.itemId] || 0) + item.quantity;
+            });
+          });
 
-        if (pastList.length > 0) {
-          pastList.sort((a, b) => {
-            const timeA = (a.created_at as any)?.toMillis ? (a.created_at as any).toMillis() : 0;
-            const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : 0;
-            return timeB - timeA;
-          });
-          const latest = pastList[0];
-          setLastOrder(latest);
-          cacheWrite('pict_last_order_cache', {
-            id: latest.id,
-            token_number: latest.token_number,
-            total_amount: latest.total_amount,
-            items: latest.items,
-          });
+          const sortedIds = Object.keys(itemFreq).sort((a, b) => itemFreq[b] - itemFreq[a]).slice(0, 3);
+          const recs = menu.filter(i => sortedIds.includes(i.id) && i.is_available);
+          setRecommendations(recs);
+          cacheWrite('pict_recommendations_cache', recs);
+
+          if (pastList.length > 0) {
+            pastList.sort((a, b) => {
+              const timeA = (a.created_at as any)?.toMillis ? (a.created_at as any).toMillis() : 0;
+              const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : 0;
+              return timeB - timeA;
+            });
+            const latest = pastList[0];
+            setLastOrder(latest);
+            cacheWrite('pict_last_order_cache', {
+              id: latest.id,
+              token_number: latest.token_number,
+              total_amount: latest.total_amount,
+              items: latest.items,
+            });
+          }
+        } catch (e) {
+          console.error('Past orders error:', e);
         }
-      } catch (e) {
-        console.error('Past orders error:', e);
-      }
+      })();
+    };
+
+    const idle = (window as any).requestIdleCallback as undefined | ((cb: () => void, opts?: { timeout: number }) => number);
+    if (idle) {
+      const id = idle(run, { timeout: 2500 });
+      return () => (window as any).cancelIdleCallback?.(id);
     }
-    loadPastOrders();
+    const t = window.setTimeout(run, 1200);
+    return () => clearTimeout(t);
   }, [menu]);
 
-  // Listen to Live Canteen Rush Queue
+  // Rush meter: cheap count poll instead of a permanent live listener
   useEffect(() => {
+    let cancelled = false;
     const qQueue = query(displayBoardCollection, where('status', 'in', ['Pending', 'PREPARING']));
-    const unsubQueue = onSnapshot(qQueue, (snap) => {
-      setQueueCount(snap.size);
-      cacheWrite('pict_canteen_queue_cache', snap.size);
-    }, () => {});
-    return () => unsubQueue();
+
+    const refresh = async () => {
+      try {
+        const snap = await getCountFromServer(qQueue);
+        if (!cancelled) {
+          const count = snap.data().count;
+          setQueueCount(count);
+          cacheWrite('pict_canteen_queue_cache', count);
+        }
+      } catch {
+        /* ignore — keep cached value */
+      }
+    };
+
+    const start = window.setTimeout(() => {
+      refresh();
+    }, 800);
+    const interval = window.setInterval(refresh, 20_000);
+    return () => {
+      cancelled = true;
+      clearTimeout(start);
+      clearInterval(interval);
+    };
   }, []);
 
-  // Fetch payment config once (no hardcoded Razorpay keys)
+  // Payment config only when opening checkout (avoids cold Cloud Function on every visit)
   const fetchPaymentConfig = useCallback(async (force = false) => {
     if (paymentConfigLoaded.current && !force) return;
     try {
@@ -251,10 +265,6 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
       setRazorpayKeyId(null);
     }
   }, []);
-
-  useEffect(() => {
-    fetchPaymentConfig();
-  }, [fetchPaymentConfig]);
 
   // Prefer App-shared active orders when provided (avoids duplicate listeners)
   useEffect(() => {
@@ -431,8 +441,9 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
     const data = result.data as { orderId: string; token_number: string };
     setActiveOrderIds(prev => prev.includes(data.orderId) ? prev : [...prev, data.orderId]);
     setCart([]);
-    setIsStatusModalOpen(true);
     setIsPaymentModalOpen(false);
+    if (onOpenOrdersModal) onOpenOrdersModal();
+    else setIsStatusModalOpen(true);
   };
 
   const handlePaymentSubmit = async () => {
@@ -696,6 +707,7 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
           <div className="max-w-md mx-auto pointer-events-auto">
             <button
               onClick={() => {
+                void fetchPaymentConfig();
                 setIsPaymentModalOpen(true);
               }}
               className="w-full bg-slate-900 hover:bg-black text-white rounded-full p-3.5 px-5 flex items-center justify-between shadow-2xl shadow-slate-900/30 google-touch google-ripple transition-all cursor-pointer"
@@ -723,46 +735,40 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
         </div>
       )}
 
-      {/* Floating Active Orders Badge */}
-      {activeOrders.length > 0 && !isStatusModalOpen && (
-        <button
-          onClick={() => (onOpenOrdersModal ? onOpenOrdersModal() : setIsStatusModalOpen(true))}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl shadow-blue-600/40 flex items-center justify-center z-40 google-touch google-ripple transition-all cursor-pointer"
-          aria-label="View active orders"
-        >
-          <Receipt size={22} />
-          <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[11px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-white">
-            {activeOrders.length}
-          </span>
-        </button>
-      )}
+      {/* Floating Active Orders Badge is rendered by App (mid-right) so it hangs while scrolling */}
 
       {/* Full-Screen Blinkit/Swiggy-style Order Review & Checkout */}
-      <CartReviewView
-        isOpen={isPaymentModalOpen}
-        onClose={() => setIsPaymentModalOpen(false)}
-        cart={cart}
-        menu={menu}
-        onAddToCart={addToCart}
-        onRemoveFromCart={removeFromCart}
-        onClearCart={() => setCart([])}
-        cartTotal={cartTotal}
-        paymentProvider={paymentProvider}
-        onSelectPaymentProvider={setPaymentProvider}
-        scheduledFor={scheduledFor}
-        onSelectScheduledFor={setScheduledFor}
-        customTime={customTime}
-        onSelectCustomTime={setCustomTime}
-        isProcessing={isProcessingPayment}
-        onSubmit={handlePaymentSubmit}
-      />
+      {isPaymentModalOpen && (
+        <Suspense fallback={null}>
+          <CartReviewView
+            isOpen={isPaymentModalOpen}
+            onClose={() => setIsPaymentModalOpen(false)}
+            cart={cart}
+            menu={menu}
+            onAddToCart={addToCart}
+            onRemoveFromCart={removeFromCart}
+            onClearCart={() => setCart([])}
+            cartTotal={cartTotal}
+            paymentProvider={paymentProvider}
+            onSelectPaymentProvider={setPaymentProvider}
+            scheduledFor={scheduledFor}
+            onSelectScheduledFor={setScheduledFor}
+            customTime={customTime}
+            onSelectCustomTime={setCustomTime}
+            isProcessing={isProcessingPayment}
+            onSubmit={handlePaymentSubmit}
+          />
+        </Suspense>
+      )}
 
-      {/* Order Tracker Modal */}
-      <OrderTrackerModal
-        isOpen={isStatusModalOpen}
-        onClose={() => setIsStatusModalOpen(false)}
-        orders={activeOrders}
-      />
+      {/* Local tracker only when App does not own the modal */}
+      {!onOpenOrdersModal && (
+        <OrderTrackerModal
+          isOpen={isStatusModalOpen}
+          onClose={() => setIsStatusModalOpen(false)}
+          orders={activeOrders}
+        />
+      )}
 
     </div>
   );

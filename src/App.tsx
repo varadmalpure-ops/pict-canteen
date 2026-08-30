@@ -1,7 +1,7 @@
 import { useEffect, useState, lazy, Suspense, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, query, where, limit } from 'firebase/firestore';
 import { auth, db, ordersCollection } from './firebase';
 import StudentView from './components/StudentView';
 import StudentAuth from './components/StudentAuth';
@@ -10,6 +10,7 @@ import PWAInstallPrompt from './components/PWAInstallPrompt';
 import OrderTrackerModal from './components/OrderTrackerModal';
 import { ThemeProvider } from './lib/ThemeContext';
 import type { Order } from './types';
+import { Receipt } from 'lucide-react';
 
 const AdminView = lazy(() => import('./components/AdminView'));
 const KitchenView = lazy(() => import('./components/KitchenView'));
@@ -58,7 +59,6 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Shared active-order listener for Navbar + tracker modal
   useEffect(() => {
     if (!user) {
       setActiveOrders([]);
@@ -67,7 +67,8 @@ function App() {
     const q = query(
       ordersCollection,
       where('uid', '==', user.uid),
-      where('status', 'in', ['Pending', 'PREPARING', 'READY'])
+      where('status', 'in', ['Pending', 'PREPARING', 'READY']),
+      limit(10)
     );
     const unsub = onSnapshot(q, (snap) => {
       setActiveOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Order)));
@@ -115,6 +116,21 @@ function App() {
               </Routes>
             </Suspense>
           </main>
+
+          {/* Mid-right floating button — hangs while scrolling, not stuck at bottom */}
+          {user && activeOrders.length > 0 && !isOrdersModalOpen && (
+            <button
+              type="button"
+              onClick={openOrdersModal}
+              className="fixed right-4 top-[42%] -translate-y-1/2 z-40 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl shadow-blue-600/40 flex items-center justify-center google-touch google-ripple transition-all cursor-pointer"
+              aria-label="View active orders"
+            >
+              <Receipt size={22} />
+              <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[11px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-white">
+                {activeOrders.length}
+              </span>
+            </button>
+          )}
 
           <OrderTrackerModal
             isOpen={isOrdersModalOpen}
