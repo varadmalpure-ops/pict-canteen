@@ -79,7 +79,14 @@ export default function StudentView() {
   });
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
-  const [lastOrder, setLastOrder] = useState<Order | null>(null);
+  const [lastOrder, setLastOrder] = useState<Order | null>(() => {
+    try {
+      const cached = localStorage.getItem('pict_last_order_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [queueCount, setQueueCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
@@ -106,7 +113,14 @@ export default function StudentView() {
       return true;
     }
   });
-  const [recommendations, setRecommendations] = useState<MenuItem[]>([]);
+  const [recommendations, setRecommendations] = useState<MenuItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('pict_recommendations_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -181,7 +195,11 @@ export default function StudentView() {
         });
 
         const sortedIds = Object.keys(itemFreq).sort((a, b) => itemFreq[b] - itemFreq[a]).slice(0, 3);
-        setRecommendations(menu.filter(i => sortedIds.includes(i.id) && i.is_available));
+        const recs = menu.filter(i => sortedIds.includes(i.id) && i.is_available);
+        setRecommendations(recs);
+        try {
+          localStorage.setItem('pict_recommendations_cache', JSON.stringify(recs));
+        } catch {}
 
         if (pastList.length > 0) {
           pastList.sort((a, b) => {
@@ -189,7 +207,11 @@ export default function StudentView() {
             const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : 0;
             return timeB - timeA;
           });
-          setLastOrder(pastList[0]);
+          const latest = pastList[0];
+          setLastOrder(latest);
+          try {
+            localStorage.setItem('pict_last_order_cache', JSON.stringify(latest));
+          } catch {}
         }
       } catch (e) {
         console.error('Past orders error:', e);
