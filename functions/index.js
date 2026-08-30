@@ -214,7 +214,7 @@ exports.createPaymentOrder = functions.https.onCall(async (data, context) => {
       );
     }
 
-    assertCampusLocation(data.latitude, data.longitude);
+    checkCampusLocation(data.latitude, data.longitude);
     await assertRateLimit(context.auth.uid);
     const { validatedItems, calculatedTotal } = await validateAndPriceItems(data.items || []);
 
