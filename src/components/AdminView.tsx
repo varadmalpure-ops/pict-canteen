@@ -1,9 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { collection, onSnapshot, doc, updateDoc, query, where, addDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, type User } from 'firebase/auth';
-import { db, menuItemsCollection, auth, updateOrderStatusFn } from '../firebase';
+import { db, menuItemsCollection, auth, updateOrderStatusFn, setStudentVerificationFn } from '../firebase';
+import { getUserImageUrl } from '../lib/userPhotos';
 import type { MenuItem, Order, OrderStatus } from '../types';
-import { Settings, CheckCircle2, Flame, Utensils, AlertCircle, LogOut, Plus, Trash2, Edit2, X } from 'lucide-react';
+import { Settings, CheckCircle2, Flame, Utensils, AlertCircle, LogOut, Plus, Trash2, Edit2, X, UserCheck, Volume2, VolumeX, ShieldCheck, Check, Ban } from 'lucide-react';
+
+interface PendingStudent {
+  uid: string;
+  email: string;
+  pnr: string;
+  dob: string;
+  idPhotoPath?: string;
+  selfiePath?: string;
+  verificationStatus: string;
+  idPhotoUrl?: string;
+  selfieUrl?: string;
+}
 
 async function assertIsAdmin(uid: string): Promise<boolean> {
   try {
@@ -17,7 +30,9 @@ async function assertIsAdmin(uid: string): Promise<boolean> {
 export default function AdminView() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [tab, setTab] = useState<'KITCHEN' | 'INVENTORY'>('KITCHEN');
+  const [pendingStudents, setPendingStudents] = useState<PendingStudent[]>([]);
+  const [tab, setTab] = useState<'KITCHEN' | 'INVENTORY' | 'VERIFICATIONS'>('KITCHEN');
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const prevPendingCount = useRef(0);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -80,7 +95,7 @@ export default function AdminView() {
       const activeOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order));
 
       const pendingCount = activeOrders.filter(o => o.status === 'Pending').length;
-      if (pendingCount > prevPendingCount.current) {
+      if (pendingCount > prevPendingCount.current && soundEnabled) {
         try {
           const audio = new Audio('/notification.mp3');
           audio.play().catch(() => {});
@@ -110,11 +125,31 @@ export default function AdminView() {
       setMenu(items);
     });
 
+    const unsubscribeUsers = onSnapshot(
+      query(collection(db, 'users'), where('verificationStatus', '==', 'pending')),
+      async (snapshot) => {
+        const list = snapshot.docs.map(d => ({ uid: d.id, ...d.data() } as PendingStudent));
+        const withUrls = await Promise.all(list.map(async (st) => {
+          let idPhotoUrl = undefined;
+          let selfieUrl = undefined;
+          if (st.idPhotoPath) {
+            try { idPhotoUrl = await getUserImageUrl(st.idPhotoPath); } catch {}
+          }
+          if (st.selfiePath) {
+            try { selfieUrl = await getUserImageUrl(st.selfiePath); } catch {}
+          }
+          return { ...st, idPhotoUrl, selfieUrl };
+        }));
+        setPendingStudents(withUrls);
+      }
+    );
+
     return () => {
       unsubscribeOrders();
       unsubscribeMenu();
+      unsubscribeUsers();
     };
-  }, [user]);
+  }, [user, soundEnabled]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -281,26 +316,66 @@ export default function AdminView() {
     setIsFormOpen(true);
   };
 
+  const handleVerifyStudent = async (studentId: string, status: 'verified' | 'rejected') => {
+    try {
+      await setStudentVerificationFn({ userId: studentId, verificationStatus: status });
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || 'Failed to update student verification');
+    }
+  };
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (next) {
+      const audio = new Audio('/notification.mp3');
+      audio.play().catch(() => {});
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-8">
-      <div className="flex justify-between items-start mb-8">
-        <div className="flex gap-4 bg-gray-100 p-2 rounded-2xl w-fit">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <div className="flex flex-wrap gap-2 sm:gap-4 bg-gray-100 p-2 rounded-2xl">
           <button
             onClick={() => setTab('KITCHEN')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold ${tab === 'KITCHEN' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-sm sm:text-base ${tab === 'KITCHEN' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
           >
-            <Utensils size={20} /> Kitchen Display
+            <Utensils size={18} /> Kitchen
           </button>
           <button
             onClick={() => setTab('INVENTORY')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold ${tab === 'INVENTORY' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-sm sm:text-base ${tab === 'INVENTORY' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
           >
-            <Settings size={20} /> Inventory Control
+            <Settings size={18} /> Inventory
+          </button>
+          <button
+            onClick={() => setTab('VERIFICATIONS')}
+            className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-sm sm:text-base ${tab === 'VERIFICATIONS' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+          >
+            <UserCheck size={18} /> Verifications
+            {pendingStudents.length > 0 && (
+              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+                {pendingStudents.length}
+              </span>
+            )}
           </button>
         </div>
-        <button onClick={() => signOut(auth)} className="flex items-center gap-2 px-4 py-2 text-gray-500 hover:text-red-600 bg-gray-100 rounded-xl font-medium">
-          <LogOut size={18} /> Sign Out
-        </button>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleSound}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm border transition-colors ${soundEnabled ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-100 border-gray-200 text-gray-500'}`}
+            title="Toggle Order Chime"
+          >
+            {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+            <span>{soundEnabled ? 'Sound ON' : 'Sound OFF'}</span>
+          </button>
+          <button onClick={() => signOut(auth)} className="flex items-center gap-2 px-4 py-2.5 text-gray-500 hover:text-red-600 bg-gray-100 rounded-xl font-medium text-sm">
+            <LogOut size={18} /> Sign Out
+          </button>
+        </div>
       </div>
 
       {tab === 'KITCHEN' ? (
@@ -369,7 +444,7 @@ export default function AdminView() {
             </div>
           )}
         </div>
-      ) : (
+      ) : tab === 'INVENTORY' ? (
         <div className="max-w-3xl">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -428,6 +503,78 @@ export default function AdminView() {
               </div>
             ))}
           </div>
+        </div>
+      ) : (
+        <div>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <ShieldCheck className="text-indigo-600" /> Pending Student Verifications
+            </h2>
+          </div>
+
+          {pendingStudents.length === 0 ? (
+            <div className="bg-white p-12 text-center rounded-3xl border border-gray-100 flex flex-col items-center">
+              <CheckCircle2 size={48} className="text-green-500 mb-4" />
+              <h3 className="text-xl font-semibold text-gray-800">No pending student verifications</h3>
+              <p className="text-gray-500 mt-1">All registered students have been reviewed.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {pendingStudents.map((student) => (
+                <div key={student.uid} className="bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-sm p-6 flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                          PNR: {student.pnr}
+                        </span>
+                        <h3 className="font-bold text-gray-900 text-lg mt-2">{student.email}</h3>
+                        {student.dob && <p className="text-xs text-gray-500">DOB: {student.dob}</p>}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 mb-6">
+                      <div className="bg-gray-50 p-2 rounded-2xl border text-center">
+                        <span className="text-xs font-semibold text-gray-500 block mb-1">ID Card</span>
+                        {student.idPhotoUrl ? (
+                          <a href={student.idPhotoUrl} target="_blank" rel="noreferrer">
+                            <img src={student.idPhotoUrl} alt="Student ID" className="w-full h-28 object-cover rounded-xl hover:opacity-90 transition-opacity" />
+                          </a>
+                        ) : (
+                          <div className="h-28 flex items-center justify-center text-xs text-gray-400">No ID image</div>
+                        )}
+                      </div>
+                      <div className="bg-gray-50 p-2 rounded-2xl border text-center">
+                        <span className="text-xs font-semibold text-gray-500 block mb-1">Selfie</span>
+                        {student.selfieUrl ? (
+                          <a href={student.selfieUrl} target="_blank" rel="noreferrer">
+                            <img src={student.selfieUrl} alt="Student Selfie" className="w-full h-28 object-cover rounded-xl hover:opacity-90 transition-opacity" />
+                          </a>
+                        ) : (
+                          <div className="h-28 flex items-center justify-center text-xs text-gray-400">No selfie</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleVerifyStudent(student.uid, 'rejected')}
+                      className="flex-1 py-3 px-4 bg-red-50 text-red-600 rounded-xl font-semibold flex items-center justify-center gap-1.5 hover:bg-red-100 transition-colors text-sm"
+                    >
+                      <Ban size={16} /> Reject
+                    </button>
+                    <button
+                      onClick={() => handleVerifyStudent(student.uid, 'verified')}
+                      className="flex-1 py-3 px-4 bg-green-600 text-white rounded-xl font-semibold flex items-center justify-center gap-1.5 hover:bg-green-700 transition-colors text-sm shadow-sm"
+                    >
+                      <Check size={16} /> Approve
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { onSnapshot, query, where, getDocs, documentId } from 'firebase/firestore';
+import { onSnapshot, query, where, getDocs, documentId, limit } from 'firebase/firestore';
 import {
   menuItemsCollection,
   ordersCollection,
@@ -124,7 +124,7 @@ export default function StudentView() {
 
       if (auth.currentUser && !auth.currentUser.isAnonymous) {
         try {
-          const pastOrdersQ = query(ordersCollection, where('uid', '==', auth.currentUser.uid));
+          const pastOrdersQ = query(ordersCollection, where('uid', '==', auth.currentUser.uid), limit(20));
           const pastOrdersSnap = await getDocs(pastOrdersQ);
           const itemFreq: Record<string, number> = {};
           pastOrdersSnap.forEach(d => {

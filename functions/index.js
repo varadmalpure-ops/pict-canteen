@@ -157,6 +157,12 @@ async function assertRateLimit(uid) {
   return userRef;
 }
 
+function isBootstrapAdmin(context) {
+  const email = context.auth?.token?.email || "";
+  const verified = context.auth?.token?.email_verified === true;
+  return verified && ["canteen-staff@gmail.com", "varadmalpure@gmail.com"].includes(email);
+}
+
 // Fix 7 — allowed values for scheduled_for field
 const ALLOWED_SCHEDULED_VALUES = [null, "11:00 AM", "1:00 PM"];
 
@@ -175,15 +181,17 @@ async function reserveUTR(utr) {
   });
 }
 
+// Daily token numbering reset (e.g. #A-1 on each day)
 async function allocateToken() {
-  const counterRef = db.collection("metadata").doc("counter");
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const counterRef = db.collection("metadata").doc(`counter_${dateStr}`);
   return db.runTransaction(async (transaction) => {
     const counterSnap = await transaction.get(counterRef);
-    let nextToken = 101;
+    let nextToken = 1;
     if (counterSnap.exists) {
-      nextToken = Number(counterSnap.data().current_token || 100) + 1;
+      nextToken = Number(counterSnap.data().current_token || 0) + 1;
     }
-    transaction.set(counterRef, { current_token: nextToken }, { merge: true });
+    transaction.set(counterRef, { current_token: nextToken, date: dateStr }, { merge: true });
     return nextToken;
   });
 }
@@ -393,10 +401,9 @@ exports.updateOrderStatus = functions
   .runWith({ enforceAppCheck: true })
   .https.onCall(async (data, context) => {
     requireAuth(context);
-    const email = context.auth.token.email || "";
     const isClaimAdmin = context.auth.token.admin === true;
     const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
-    const bootstrap = ["canteen-staff@gmail.com", "varadmalpure@gmail.com"].includes(email);
+    const bootstrap = isBootstrapAdmin(context);
     if (!isClaimAdmin && !adminDoc.exists && !bootstrap) {
       throw new functions.https.HttpsError("permission-denied", "Admin only.");
     }
@@ -489,10 +496,9 @@ exports.setStudentVerification = functions
   .runWith({ enforceAppCheck: true })
   .https.onCall(async (data, context) => {
     requireAuth(context);
-    const email = context.auth.token.email || "";
     const isClaimAdmin = context.auth.token.admin === true;
     const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
-    const bootstrap = ["canteen-staff@gmail.com", "varadmalpure@gmail.com"].includes(email);
+    const bootstrap = isBootstrapAdmin(context);
     if (!isClaimAdmin && !adminDoc.exists && !bootstrap) {
       throw new functions.https.HttpsError("permission-denied", "Admin only.");
     }

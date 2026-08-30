@@ -51,18 +51,34 @@ function App() {
             if (pendingRegStr) {
               const pendingReg = JSON.parse(pendingRegStr);
               if (pendingReg.pnr && pendingReg.idDataUrl && pendingReg.selfieDataUrl) {
+                const pnr = String(pendingReg.pnr).trim().toUpperCase().slice(0, 31);
+                const pnrRef = doc(db, 'pnrs', pnr);
+                const pnrSnap = await getDoc(pnrRef);
+                if (pnrSnap.exists() && pnrSnap.data().uid !== currentUser.uid) {
+                  sessionStorage.setItem('authError', 'This PNR is already registered with another account. Please contact staff if this is your roll number.');
+                  await signOut(auth);
+                  setUser(null);
+                  return;
+                }
+
                 const idPhotoPath = await uploadUserImage(currentUser.uid, 'id.jpg', pendingReg.idDataUrl);
                 const selfiePath = await uploadUserImage(currentUser.uid, 'selfie.jpg', pendingReg.selfieDataUrl);
+
+                await setDoc(pnrRef, {
+                  uid: currentUser.uid,
+                  pnr,
+                  created_at: serverTimestamp()
+                });
 
                 await setDoc(doc(db, 'users', currentUser.uid), {
                   uid: currentUser.uid,
                   email: currentUser.email || '',
-                  pnr: String(pendingReg.pnr).slice(0, 31),
+                  pnr,
                   dob: String(pendingReg.dob || '').slice(0, 31),
                   idPhotoPath,
                   selfiePath,
                   verificationStatus: 'pending',
-                  created_at: serverTimestamp() // Fix 8 — use server clock, not client clock
+                  created_at: serverTimestamp()
                 });
                 sessionStorage.removeItem('pendingReg');
                 setUser(currentUser);

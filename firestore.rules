@@ -1,13 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Bootstrap admins by email (server-side rules only — not shipped in the Vite client).
+    // Bootstrap admins by verified email (server-side rules only — not shipped in the Vite client).
     // Prefer custom claim admin==true or admins/{uid} for ongoing access.
     function isBootstrapAdminEmail() {
-      return request.auth.token.email in [
-        'canteen-staff@gmail.com',
-        'varadmalpure@gmail.com'
-      ];
+      return request.auth.token.email_verified == true &&
+        request.auth.token.email in [
+          'canteen-staff@gmail.com',
+          'varadmalpure@gmail.com'
+        ];
     }
 
     function isAdmin() {
@@ -88,6 +89,15 @@ service cloud.firestore {
     // UTR deduplication ledger — written only by Cloud Functions via Admin SDK
     match /usedUTRs/{utr} {
       allow read, write: if false;
+    }
+
+    // PNR (Student Roll Number) unique registry ledger
+    match /pnrs/{pnr} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && !exists(/databases/$(database)/documents/pnrs/$(pnr));
+      allow update, delete: if isAdmin();
     }
   }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { onSnapshot, query, where } from 'firebase/firestore';
+import { onSnapshot, query, where, limit } from 'firebase/firestore';
 import { displayBoardCollection } from '../firebase';
 import { ChefHat, BellRing } from 'lucide-react';
 
@@ -16,7 +16,8 @@ export default function LiveDisplay() {
   useEffect(() => {
     const q = query(
       displayBoardCollection,
-      where('status', 'in', ['PREPARING', 'READY'])
+      where('status', 'in', ['PREPARING', 'READY']),
+      limit(50)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
