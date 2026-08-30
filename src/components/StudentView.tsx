@@ -514,15 +514,15 @@ export default function StudentView() {
           )}
         </div>
 
-        {/* Horizontal Category Filter Pills (Google Pill Style) */}
-        <div className="flex gap-2 overflow-x-auto pb-0.5 text-xs no-scrollbar">
+        {/* Horizontal Category Filter Pills (Google Pill Style - full width non-clipped) */}
+        <div className="flex gap-2.5 overflow-x-auto py-1.5 px-0.5 text-xs no-scrollbar scroll-smooth items-center">
           {categories.map(cat => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-1.5 rounded-full font-bold whitespace-nowrap transition-all text-xs google-touch google-ripple cursor-pointer ${
+              className={`shrink-0 inline-flex items-center justify-center px-4 py-2 rounded-full font-bold text-xs whitespace-nowrap leading-none transition-all google-touch google-ripple cursor-pointer select-none ${
                 selectedCategory === cat
-                  ? 'bg-blue-600 dark:bg-blue-600 text-white shadow-sm shadow-blue-500/25'
+                  ? 'bg-blue-600 dark:bg-blue-600 text-white shadow-sm shadow-blue-500/30 ring-1 ring-blue-600'
                   : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300/80 dark:hover:bg-slate-700'
               }`}
             >
