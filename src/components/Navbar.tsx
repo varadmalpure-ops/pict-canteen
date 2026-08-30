@@ -11,6 +11,7 @@ import {
   X,
   ShieldCheck,
   BellRing,
+  ChefHat,
 } from 'lucide-react';
 import type { Order } from '../types';
 
@@ -105,6 +106,18 @@ export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: N
           </Link>
 
           <Link
+            to="/kitchen"
+            onClick={() => setIsMenuOpen(false)}
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 ${
+              location.pathname === '/kitchen'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <ChefHat size={14} /> Kitchen KDS
+          </Link>
+
+          <Link
             to="/admin"
             onClick={() => setIsMenuOpen(false)}
             className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 ${
@@ -113,7 +126,7 @@ export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: N
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <ShieldCheck size={14} /> Admin
+            <ShieldCheck size={14} /> Manager
           </Link>
 
           {user && (

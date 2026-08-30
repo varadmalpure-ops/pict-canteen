@@ -3,9 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { uploadUserImage } from './lib/userPhotos';
 import StudentView from './components/StudentView';
 import AdminView from './components/AdminView';
+import KitchenView from './components/KitchenView';
 import CanteenQRCode from './components/CanteenQRCode';
 import LiveDisplay from './components/LiveDisplay';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
@@ -42,47 +42,16 @@ function App() {
           const userDocRef = doc(db, 'users', currentUser.uid);
           const docSnap = await getDoc(userDocRef);
 
-          if (docSnap.exists()) {
-            setUser(currentUser);
-          } else {
-            const pendingRegStr = sessionStorage.getItem('pendingReg');
-            if (pendingRegStr) {
-              const pendingReg = JSON.parse(pendingRegStr);
-              const pnr = String(pendingReg.pnr || '').trim().toUpperCase().slice(0, 31);
-              let idPhotoPath = '';
-              let selfiePath = '';
-              if (pendingReg.idDataUrl) {
-                idPhotoPath = await uploadUserImage(currentUser.uid, 'id.jpg', pendingReg.idDataUrl);
-              }
-              if (pendingReg.selfieDataUrl) {
-                selfiePath = await uploadUserImage(currentUser.uid, 'selfie.jpg', pendingReg.selfieDataUrl);
-              }
-
-              await setDoc(userDocRef, {
-                uid: currentUser.uid,
-                email: currentUser.email || '',
-                name: currentUser.displayName || '',
-                pnr: pnr || 'PICT-STUDENT',
-                dob: String(pendingReg.dob || ''),
-                idPhotoPath,
-                selfiePath,
-                verificationStatus: 'verified',
-                created_at: serverTimestamp()
-              });
-              sessionStorage.removeItem('pendingReg');
-              setUser(currentUser);
-            } else {
-              await setDoc(userDocRef, {
-                uid: currentUser.uid,
-                email: currentUser.email || '',
-                name: currentUser.displayName || '',
-                pnr: 'PICT-' + currentUser.uid.slice(0, 6).toUpperCase(),
-                verificationStatus: 'verified',
-                created_at: serverTimestamp()
-              }, { merge: true });
-              setUser(currentUser);
-            }
+          if (!docSnap.exists()) {
+            await setDoc(userDocRef, {
+              uid: currentUser.uid,
+              email: currentUser.email || '',
+              name: currentUser.displayName || 'Student',
+              verificationStatus: 'verified',
+              created_at: serverTimestamp()
+            }, { merge: true });
           }
+          setUser(currentUser);
         } catch (e: any) {
           console.error('Auth handler error:', e);
           setUser(currentUser);
@@ -119,6 +88,7 @@ function App() {
             <Route path="/" element={user ? <StudentView /> : <StudentAuth />} />
             <Route path="/profile" element={user ? <StudentProfile /> : <Navigate to="/" />} />
             <Route path="/admin" element={<AdminView />} />
+            <Route path="/kitchen" element={<KitchenView />} />
             <Route path="/display" element={<CanteenQRCode url={window.location.origin} />} />
             <Route path="/live" element={<LiveDisplay />} />
           </Routes>

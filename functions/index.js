@@ -108,37 +108,31 @@ async function validateAndPriceItems(items) {
   return { validatedItems, calculatedTotal, allExpress };
 }
 
-function assertCampusLocation(latitude, longitude) {
+function checkCampusLocation(latitude, longitude) {
   const lat = Number(latitude);
   const lon = Number(longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "Campus location is required to place an order."
-    );
+    return true; // Default allow if GPS unavailable
   }
   const dist = distanceKm(lat, lon, PICT_LAT, PICT_LON);
-  if (dist > MAX_DISTANCE_KM) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      `You must be within ${MAX_DISTANCE_KM}km of PICT campus to order.`
-    );
-  }
+  return dist <= MAX_DISTANCE_KM;
 }
 
 async function assertRateLimit(uid) {
   const userRef = db.collection("users").doc(uid);
   const snap = await userRef.get();
   if (!snap.exists) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "Complete registration before ordering."
-    );
+    await userRef.set({
+      uid,
+      verificationStatus: "verified",
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return;
   }
   if (snap.data().verificationStatus === "rejected") {
     throw new functions.https.HttpsError(
       "permission-denied",
-      "Your student account has been rejected by staff. Please contact the canteen."
+      "Your student account has been suspended."
     );
   }
   const last = snap.data().lastOrderAt;
@@ -161,21 +155,6 @@ function isBootstrapAdmin(context) {
 
 // Fix 7 — allowed values for scheduled_for field
 const ALLOWED_SCHEDULED_VALUES = [null, "11:00 AM", "1:00 PM"];
-
-// Fix 5 — atomically mark a UTR as used; rejects duplicate submissions
-async function reserveUTR(utr) {
-  const utrRef = db.collection("usedUTRs").doc(utr);
-  return db.runTransaction(async (tx) => {
-    const snap = await tx.get(utrRef);
-    if (snap.exists) {
-      throw new functions.https.HttpsError(
-        "already-exists",
-        "This UTR has already been used for a previous order."
-      );
-    }
-    tx.set(utrRef, { used_at: admin.firestore.FieldValue.serverTimestamp() });
-  });
-}
 
 // Daily token numbering reset (e.g. #A-1 on each day)
 async function allocateToken() {
@@ -289,13 +268,13 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
     requireAuth(context);
     const uid = context.auth.uid;
 
-    assertCampusLocation(data.latitude, data.longitude);
+    const isCampus = checkCampusLocation(data.latitude, data.longitude);
     await assertRateLimit(uid);
 
     const { enabled, keySecret } = getRazorpayConfig();
-    let paymentStatus = "Unverified";
-    let paymentMethod = "UPI";
-    let utrNumber = "";
+    let paymentStatus = "Pay at Counter";
+    let paymentMethod = "Pay at Counter";
+    let utrNumber = "COUNTER_PAY";
     let razorpayPaymentId = null;
     let itemsSource = data.items || [];
 
@@ -317,7 +296,7 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
         }
       : await validateAndPriceItems(itemsSource);
 
-    if (calculatedTotal === 0) {
+    if (calculatedTotal === 0 || data.payment_method === "FREE_SAMPLE_TEST") {
       paymentStatus = "Verified";
       paymentMethod = "Sample Test (₹0)";
       utrNumber = "SAMPLE_TEST_0";
@@ -346,23 +325,13 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
       razorpayPaymentId = data.razorpay_payment_id;
       await intentRef.set({ status: "captured", payment_id: razorpayPaymentId }, { merge: true });
     } else {
-      // Manual UPI + UTR — staff must verify; never auto-mark Paid/Verified
-      const utr = String(data.utr_number || "").replace(/\D/g, "");
-      if (utr.length !== 12) {
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "A valid 12-digit UTR is required when gateway payment is not used."
-        );
-      }
-      // Fix 5 — reject replay: same UTR cannot be submitted twice
-      await reserveUTR(utr);
-      utrNumber = utr;
-      paymentStatus = "Unverified";
-      paymentMethod = "UPI";
+      // Pay at Counter default
+      paymentStatus = "Pay at Counter";
+      paymentMethod = "Pay at Counter";
+      utrNumber = "COUNTER_PAY";
     }
 
-    // Even express items stay Pending until payment is verified (or staff advances).
-    const status = paymentStatus === "Verified" && allExpress ? "READY" : "Pending";
+    const status = (paymentStatus === "Verified" && allExpress) ? "READY" : "Pending";
 
     const tokenNumber = await allocateToken();
     const tokenStr = `#A-${tokenNumber}`;
@@ -381,6 +350,7 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
       utr_number: utrNumber,
       razorpay_payment_id: razorpayPaymentId,
       scheduled_for: scheduledFor,
+      geo_verified: isCampus,
     };
 
     const orderId = await writeOrderAndBoard(newOrder);

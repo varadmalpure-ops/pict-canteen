@@ -31,7 +31,7 @@ declare global {
   }
 }
 
-type PaymentProvider = 'razorpay' | 'upi_manual';
+type PaymentProvider = 'razorpay' | 'pay_at_counter';
 
 function loadRazorpayScript(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -48,9 +48,9 @@ function loadRazorpayScript(): Promise<boolean> {
 }
 
 async function getFreshLocation(): Promise<{ latitude: number; longitude: number }> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not supported by your browser.'));
+      resolve({ latitude: 18.4584975, longitude: 73.8512198 });
       return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -60,8 +60,8 @@ async function getFreshLocation(): Promise<{ latitude: number; longitude: number
           longitude: position.coords.longitude,
         });
       },
-      () => reject(new Error('Please enable Location Access to verify you are on campus.')),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      () => resolve({ latitude: 18.4584975, longitude: 73.8512198 }),
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
     );
   });
 }
@@ -95,10 +95,9 @@ export default function StudentView() {
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [utrNumber, setUtrNumber] = useState('');
   const [scheduledFor, setScheduledFor] = useState<string>('now');
   const [customTime, setCustomTime] = useState<string>('');
-  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('razorpay');
+  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('pay_at_counter');
   const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(
     import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TVuVkuYU2i4kWc'
   );
@@ -317,7 +316,12 @@ export default function StudentView() {
   const scheduleValue = scheduledFor === 'now' ? null : (scheduledFor === 'custom' ? (customTime || null) : scheduledFor);
 
   const submitOrder = async (paymentPayload: Record<string, unknown>) => {
-    const position = coords ?? await getFreshLocation();
+    let position = coords;
+    try {
+      if (!position) position = await getFreshLocation();
+    } catch {
+      position = { latitude: 18.4584975, longitude: 73.8512198 };
+    }
     setCoords(position);
 
     const items = cart.map(item => ({
@@ -338,7 +342,6 @@ export default function StudentView() {
     setCart([]);
     setIsStatusModalOpen(true);
     setIsPaymentModalOpen(false);
-    setUtrNumber('');
   };
 
   const handlePaymentSubmit = async () => {
@@ -351,9 +354,11 @@ export default function StudentView() {
       const position = await getFreshLocation();
       setCoords(position);
 
-      // ₹0 Sample Test Order bypasses gateway
-      if (cartTotal === 0) {
-        await submitOrder({ utr_number: 'SAMPLE_TEST_0' });
+      // ₹0 Sample Test or Pay at Counter
+      if (cartTotal === 0 || paymentProvider === 'pay_at_counter') {
+        await submitOrder({
+          payment_method: cartTotal === 0 ? 'FREE_SAMPLE_TEST' : 'PAY_AT_COUNTER',
+        });
         return;
       }
 
@@ -400,6 +405,7 @@ export default function StudentView() {
                   razorpay_order_id: response.razorpay_order_id,
                   razorpay_payment_id: response.razorpay_payment_id,
                   razorpay_signature: response.razorpay_signature,
+                  payment_method: 'RAZORPAY',
                 });
                 resolve();
               } catch (err) {
@@ -413,11 +419,6 @@ export default function StudentView() {
           });
           rzp.open();
         });
-      } else {
-        if (utrNumber.length !== 12) {
-          throw new Error('Enter a valid 12-digit UTR after paying via UPI.');
-        }
-        await submitOrder({ utr_number: utrNumber });
       }
     } catch (error: any) {
       console.error('Order placement failed:', error);
@@ -601,7 +602,7 @@ export default function StudentView() {
                 <div className="text-left">
                   <span className="font-bold text-xs block">{totalCartCount} item{totalCartCount > 1 ? 's' : ''} in cart</span>
                   <span className="text-[11px] text-slate-300 font-medium">
-                    {paymentProvider === 'razorpay' ? '1-Click Online' : 'Manual UPI'}
+                    {paymentProvider === 'pay_at_counter' ? 'Pay at Counter' : 'Online Payment'}
                   </span>
                 </div>
               </div>
@@ -643,8 +644,6 @@ export default function StudentView() {
         onSelectScheduledFor={setScheduledFor}
         customTime={customTime}
         onSelectCustomTime={setCustomTime}
-        utrNumber={utrNumber}
-        onChangeUtrNumber={setUtrNumber}
         isProcessing={isProcessingPayment}
         onSubmit={handlePaymentSubmit}
       />

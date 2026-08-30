@@ -1,20 +1,19 @@
-import { useState } from 'react';
 import type { OrderItem } from '../types';
-import { X, Loader2, Zap, Copy, Check, Clock, ChevronRight } from 'lucide-react';
+import { X, Loader2, Zap, Banknote, Clock, ChevronRight, CheckCircle2 } from 'lucide-react';
+
+export type PaymentMethodOption = 'razorpay' | 'pay_at_counter';
 
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
   cart: OrderItem[];
   cartTotal: number;
-  paymentProvider: 'razorpay' | 'upi_manual';
-  onSelectPaymentProvider: (provider: 'razorpay' | 'upi_manual') => void;
+  paymentProvider: PaymentMethodOption;
+  onSelectPaymentProvider: (provider: PaymentMethodOption) => void;
   scheduledFor: string;
   onSelectScheduledFor: (val: string) => void;
   customTime: string;
   onSelectCustomTime: (val: string) => void;
-  utrNumber: string;
-  onChangeUtrNumber: (val: string) => void;
   isProcessing: boolean;
   onSubmit: () => void;
 }
@@ -30,20 +29,10 @@ export default function CheckoutModal({
   onSelectScheduledFor,
   customTime,
   onSelectCustomTime,
-  utrNumber,
-  onChangeUtrNumber,
   isProcessing,
   onSubmit,
 }: CheckoutModalProps) {
-  const [copiedUpi, setCopiedUpi] = useState(false);
-
   if (!isOpen) return null;
-
-  const handleCopyUpi = () => {
-    navigator.clipboard.writeText('Q829774745@ybl');
-    setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 2000);
-  };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
@@ -56,7 +45,7 @@ export default function CheckoutModal({
               Order Checkout
             </h3>
             <p className="text-xs font-medium text-slate-400">
-              Review your items and complete payment
+              Confirm your order & choose payment method
             </p>
           </div>
           <button
@@ -101,6 +90,23 @@ export default function CheckoutModal({
             <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
+                onClick={() => onSelectPaymentProvider('pay_at_counter')}
+                className={`p-3.5 rounded-2xl border text-left transition-all ${
+                  paymentProvider === 'pay_at_counter'
+                    ? 'bg-emerald-50/80 border-emerald-500 text-emerald-950 ring-2 ring-emerald-200 shadow-sm'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <div className="font-black text-xs flex items-center gap-1.5 text-emerald-700">
+                  <Banknote size={15} /> Pay at Counter
+                </div>
+                <div className="text-[11px] text-slate-500 font-medium mt-1">
+                  Cash or Counter UPI QR
+                </div>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => onSelectPaymentProvider('razorpay')}
                 className={`p-3.5 rounded-2xl border text-left transition-all ${
                   paymentProvider === 'razorpay'
@@ -109,31 +115,27 @@ export default function CheckoutModal({
                 }`}
               >
                 <div className="font-black text-xs flex items-center gap-1.5 text-indigo-600">
-                  <Zap size={14} className="fill-indigo-600" /> 1-Click Online
+                  <Zap size={14} className="fill-indigo-600" /> Pay Online
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium mt-1">
-                  GPay, PhonePe, Cards
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onSelectPaymentProvider('upi_manual')}
-                className={`p-3.5 rounded-2xl border text-left transition-all ${
-                  paymentProvider === 'upi_manual'
-                    ? 'bg-indigo-50/70 border-indigo-500 text-indigo-950 ring-2 ring-indigo-200 shadow-sm'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <div className="font-black text-xs flex items-center gap-1.5 text-purple-600">
-                  <Copy size={14} /> Manual UPI
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium mt-1">
-                  Pay to UPI ID + Ref
+                  Cards & Netbanking
                 </div>
               </button>
             </div>
           </div>
+
+          {/* Pay at Counter Info Banner */}
+          {paymentProvider === 'pay_at_counter' && (
+            <div className="bg-emerald-50/80 border border-emerald-200 p-3.5 rounded-2xl flex items-start gap-2.5 text-emerald-900 animate-in fade-in">
+              <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+              <div className="text-xs">
+                <span className="font-bold block">Instant Token Generation</span>
+                <span className="text-emerald-700 mt-0.5 block">
+                  Get your token immediately. Pay ₹{cartTotal.toFixed(2)} with cash or scan the canteen counter QR when your token is called.
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Pickup Timing */}
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
@@ -159,43 +161,6 @@ export default function CheckoutModal({
               />
             )}
           </div>
-
-          {/* Manual UPI Details (if selected) */}
-          {paymentProvider === 'upi_manual' && (
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-              <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200">
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-slate-400">Canteen UPI ID</div>
-                  <div className="font-black text-sm text-slate-900">Q829774745@ybl</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCopyUpi}
-                  className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition-colors ${
-                    copiedUpi ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
-                  }`}
-                >
-                  {copiedUpi ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
-                </button>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Enter 12-Digit UPI Ref / UTR Number
-                </label>
-                <input
-                  type="text"
-                  value={utrNumber}
-                  onChange={(e) => onChangeUtrNumber(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                  placeholder="e.g. 312345678901"
-                  className={`w-full bg-white px-3.5 py-3 rounded-xl border-2 outline-none font-mono font-bold tracking-widest text-center text-sm ${
-                    utrNumber.length === 12 ? 'border-emerald-500 text-emerald-950' : 'border-slate-200'
-                  }`}
-                  maxLength={12}
-                />
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer & Pay Action */}
@@ -208,18 +173,15 @@ export default function CheckoutModal({
           <button
             type="button"
             onClick={onSubmit}
-            disabled={
-              isProcessing ||
-              (paymentProvider === 'upi_manual' && utrNumber.length !== 12)
-            }
+            disabled={isProcessing}
             className="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-bold text-sm shadow-xl shadow-slate-900/10 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isProcessing ? (
-              <><Loader2 size={18} className="animate-spin" /> Processing Payment...</>
-            ) : paymentProvider === 'razorpay' ? (
-              <>Pay ₹{cartTotal.toFixed(2)} Securely <ChevronRight size={16} /></>
+              <><Loader2 size={18} className="animate-spin" /> Confirming Order...</>
+            ) : paymentProvider === 'pay_at_counter' ? (
+              <>Place Order & Get Token <ChevronRight size={16} /></>
             ) : (
-              <>Confirm UTR & Place Order <ChevronRight size={16} /></>
+              <>Pay ₹{cartTotal.toFixed(2)} Online <ChevronRight size={16} /></>
             )}
           </button>
         </div>
