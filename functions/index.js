@@ -138,6 +138,13 @@ async function assertRateLimit(uid) {
       "Complete registration before ordering."
     );
   }
+  // Fix 4 — block unverified/rejected students from ordering
+  if (snap.data().verificationStatus !== "verified") {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Your student ID has not been verified yet. Please wait for staff review."
+    );
+  }
   const last = snap.data().lastOrderAt;
   if (last && typeof last.toMillis === "function") {
     if (Date.now() - last.toMillis() < MIN_ORDER_INTERVAL_MS) {
@@ -148,6 +155,24 @@ async function assertRateLimit(uid) {
     }
   }
   return userRef;
+}
+
+// Fix 7 — allowed values for scheduled_for field
+const ALLOWED_SCHEDULED_VALUES = [null, "11:00 AM", "1:00 PM"];
+
+// Fix 5 — atomically mark a UTR as used; rejects duplicate submissions
+async function reserveUTR(utr) {
+  const utrRef = db.collection("usedUTRs").doc(utr);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(utrRef);
+    if (snap.exists) {
+      throw new functions.https.HttpsError(
+        "already-exists",
+        "This UTR has already been used for a previous order."
+      );
+    }
+    tx.set(utrRef, { used_at: admin.firestore.FieldValue.serverTimestamp() });
+  });
 }
 
 async function allocateToken() {
@@ -267,7 +292,7 @@ exports.placeOrder = functions
     const uid = context.auth.uid;
 
     assertCampusLocation(data.latitude, data.longitude);
-    const userRef = await assertRateLimit(uid);
+    await assertRateLimit(uid);
 
     const { enabled, keySecret } = getRazorpayConfig();
     let paymentStatus = "Unverified";
@@ -275,7 +300,16 @@ exports.placeOrder = functions
     let utrNumber = "";
     let razorpayPaymentId = null;
     let itemsSource = data.items || [];
-    let scheduledFor = data.scheduled_for || null;
+
+    // Fix 7 — validate scheduled_for: must be null, an allowed label, or HH:MM format
+    const scheduledFor = data.scheduled_for || null;
+    if (
+      scheduledFor !== null &&
+      !ALLOWED_SCHEDULED_VALUES.includes(scheduledFor) &&
+      !/^\d{1,2}:\d{2}$/.test(scheduledFor)
+    ) {
+      throw new functions.https.HttpsError("invalid-argument", "Invalid scheduled_for value.");
+    }
 
     if (enabled && data.razorpay_order_id && data.razorpay_payment_id && data.razorpay_signature) {
       const ok = verifyRazorpaySignature(
@@ -298,7 +332,6 @@ exports.placeOrder = functions
       }
 
       itemsSource = intentSnap.data().items;
-      scheduledFor = intentSnap.data().scheduled_for || scheduledFor;
       paymentStatus = "Verified";
       paymentMethod = "Razorpay";
       razorpayPaymentId = data.razorpay_payment_id;
@@ -312,6 +345,8 @@ exports.placeOrder = functions
           "A valid 12-digit UTR is required when gateway payment is not used."
         );
       }
+      // Fix 5 — reject replay: same UTR cannot be submitted twice
+      await reserveUTR(utr);
       utrNumber = utr;
       paymentStatus = "Unverified";
       paymentMethod = "UPI";

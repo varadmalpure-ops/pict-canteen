@@ -7,8 +7,8 @@ export default function StudentAuth() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(() => {
-    const saved = localStorage.getItem('authError');
-    localStorage.removeItem('authError');
+    const saved = sessionStorage.getItem('authError');
+    sessionStorage.removeItem('authError');
     return saved || '';
   });
 
@@ -153,7 +153,7 @@ export default function StudentAuth() {
   };
 
   const stashPendingReg = () => {
-    localStorage.setItem('pendingReg', JSON.stringify({
+    sessionStorage.setItem('pendingReg', JSON.stringify({
       pnr,
       dob,
       idDataUrl: photoBase64,

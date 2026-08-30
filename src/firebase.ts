@@ -22,7 +22,7 @@ if (typeof window !== 'undefined') {
   // self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   initializeAppCheck(app, {
     provider: new ReCaptchaV3Provider(
-      import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LfCTngtAAAAAOlBjK-eW-CdcavwvMJb9hP-QfHV'
+      import.meta.env.VITE_RECAPTCHA_SITE_KEY
     ),
     isTokenAutoRefreshEnabled: true
   });

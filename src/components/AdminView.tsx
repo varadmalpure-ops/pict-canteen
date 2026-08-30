@@ -8,10 +8,7 @@ import { Settings, CheckCircle2, Flame, Utensils, AlertCircle, LogOut, Plus, Tra
 async function assertIsAdmin(uid: string): Promise<boolean> {
   try {
     const adminSnap = await getDoc(doc(db, 'admins', uid));
-    if (adminSnap.exists()) return true;
-    // Bootstrap admins can read metadata/counter
-    await getDoc(doc(db, 'metadata', 'counter'));
-    return true;
+    return adminSnap.exists();
   } catch {
     return false;
   }
@@ -85,7 +82,7 @@ export default function AdminView() {
       const pendingCount = activeOrders.filter(o => o.status === 'Pending').length;
       if (pendingCount > prevPendingCount.current) {
         try {
-          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          const audio = new Audio('/notification.mp3');
           audio.play().catch(() => {});
         } catch { /* ignore */ }
       }
@@ -400,9 +397,9 @@ export default function AdminView() {
                   <button onClick={() => setIsFormOpen(false)}><X size={24} /></button>
                 </div>
                 <form onSubmit={handleSaveItem} className="space-y-4">
-                  <input type="text" required value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Name" className="w-full px-4 py-2 rounded-xl border" />
+                  <input type="text" required maxLength={80} value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Name" className="w-full px-4 py-2 rounded-xl border" />
                   <input type="number" required min="0.01" step="0.01" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} placeholder="Price" className="w-full px-4 py-2 rounded-xl border" />
-                  <input type="text" required value={newItemCategory} onChange={e => setNewItemCategory(e.target.value)} placeholder="Category" className="w-full px-4 py-2 rounded-xl border" />
+                  <input type="text" required maxLength={40} value={newItemCategory} onChange={e => setNewItemCategory(e.target.value)} placeholder="Category" className="w-full px-4 py-2 rounded-xl border" />
                   <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold">
                     {editingItem ? 'Save Changes' : 'Add Item'}
                   </button>
