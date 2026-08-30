@@ -58,9 +58,9 @@ export default function KitchenView() {
     } catch {}
   }, [soundEnabled]);
 
-  // Fast resilient live kitchen tickets
+  // Fast resilient live kitchen tickets — query displayBoard (active-only, lightweight)
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'orders'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'displayBoard'), (snapshot) => {
       const activeList = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Order))
         .filter(o => o.status === 'Pending' || o.status === 'PREPARING' || o.status === 'READY');
@@ -78,12 +78,8 @@ export default function KitchenView() {
       setOrders(activeList);
       setLoading(false);
     }, (err) => {
-      console.warn('Orders subscription notice, falling back to displayBoard:', err);
-      onSnapshot(collection(db, 'displayBoard'), (boardSnap) => {
-        const activeList = boardSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-        setOrders(activeList);
-        setLoading(false);
-      }, () => setLoading(false));
+      console.warn('displayBoard subscription error:', err);
+      setLoading(false);
     });
 
     return () => unsub();

@@ -213,6 +213,7 @@ export default function StudentView() {
     const qQueue = query(displayBoardCollection, where('status', 'in', ['Pending', 'PREPARING']));
     const unsubQueue = onSnapshot(qQueue, (snap) => {
       setQueueCount(snap.size);
+      try { localStorage.setItem('pict_canteen_queue_cache', JSON.stringify(snap.size)); } catch {}
     }, () => {});
     return () => unsubQueue();
   }, []);
@@ -259,19 +260,26 @@ export default function StudentView() {
     })();
   }, []);
 
-  // Sync active orders snapshot
+  // Sync active orders snapshot — use ref to prevent listener churn
+  const activeOrderIdsRef = useRef(activeOrderIds);
+  activeOrderIdsRef.current = activeOrderIds;
+
+  const activeOrderIdsKey = activeOrderIds.slice(0, 10).sort().join(',');
+
   useEffect(() => {
-    if (activeOrderIds.length === 0) {
+    const ids = activeOrderIdsRef.current;
+    if (ids.length === 0) {
       setActiveOrders([]);
       return;
     }
 
-    const validIds = activeOrderIds.slice(0, 10);
+    const validIds = ids.slice(0, 10);
     const q = query(ordersCollection, where(documentId(), 'in', validIds));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order));
       let changed = false;
-      const nextActiveIds = [...activeOrderIds];
+      const currentIds = activeOrderIdsRef.current;
+      const nextActiveIds = [...currentIds];
 
       orders.forEach(orderData => {
         if (orderData.status === 'COMPLETED' || orderData.status === 'CANCELLED') {
@@ -312,7 +320,8 @@ export default function StudentView() {
     });
 
     return () => unsubscribe();
-  }, [activeOrderIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrderIdsKey]);
 
   const repeatLastOrder = useCallback(() => {
     if (!lastOrder || !lastOrder.items || lastOrder.items.length === 0) return;

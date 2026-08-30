@@ -48,7 +48,11 @@ function getRazorpayConfig() {
 function verifyRazorpaySignature(orderId, paymentId, signature, secret) {
   const body = `${orderId}|${paymentId}`;
   const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
-  return expected === signature;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected, "utf8"), Buffer.from(signature, "utf8"));
+  } catch {
+    return false;
+  }
 }
 
 async function validateAndPriceItems(items) {
@@ -127,7 +131,7 @@ async function assertRateLimit(uid) {
   if (!snap.exists) {
     await userRef.set({
       uid,
-      verificationStatus: "verified",
+      verificationStatus: "pending",
       created_at: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
     return;
@@ -179,9 +183,9 @@ function isValidScheduledTime(timeStr) {
   return totalMins >= 540 && totalMins <= 1080;
 }
 
-// Daily token numbering reset (e.g. #A-1 on each day)
+// Daily token numbering reset (e.g. #A-1 on each day in IST)
 async function allocateToken() {
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
   const counterRef = db.collection("metadata").doc(`counter_${dateStr}`);
   return db.runTransaction(async (transaction) => {
     const counterSnap = await transaction.get(counterRef);
@@ -244,6 +248,13 @@ exports.createPaymentOrder = functions.https.onCall(async (data, context) => {
 
     checkCampusLocation(data.latitude, data.longitude);
     await assertRateLimit(context.auth.uid);
+
+    // Validate scheduled_for BEFORE creating Razorpay order to avoid orphaned payment orders
+    const scheduledFor = data.scheduled_for || null;
+    if (scheduledFor !== null && !isValidScheduledTime(scheduledFor)) {
+      throw new functions.https.HttpsError("invalid-argument", "Pickup time must be between 9:00 AM and 6:00 PM.");
+    }
+
     const { validatedItems, calculatedTotal } = await validateAndPriceItems(data.items || []);
 
     const amountPaise = Math.round(calculatedTotal * 100);
@@ -268,11 +279,6 @@ exports.createPaymentOrder = functions.https.onCall(async (data, context) => {
       const errText = await res.text();
       console.error("Razorpay order error:", errText);
       throw new functions.https.HttpsError("internal", "Could not create payment order.");
-    }
-
-    const scheduledFor = data.scheduled_for || null;
-    if (scheduledFor !== null && !isValidScheduledTime(scheduledFor)) {
-      throw new functions.https.HttpsError("invalid-argument", "Pickup time must be between 9:00 AM and 6:00 PM.");
     }
 
     const rzOrder = await res.json();
@@ -458,7 +464,12 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
     ? req.rawBody.toString("utf8")
     : JSON.stringify(req.body);
   const expected = crypto.createHmac("sha256", webhookSecret).update(rawBody).digest("hex");
-  if (signature !== expected) {
+  try {
+    if (!signature || !crypto.timingSafeEqual(Buffer.from(expected, "utf8"), Buffer.from(signature, "utf8"))) {
+      res.status(400).send("Invalid signature");
+      return;
+    }
+  } catch {
     res.status(400).send("Invalid signature");
     return;
   }

@@ -33,17 +33,7 @@ service cloud.firestore {
 
       allow create: if isOwner(userId)
         && request.resource.data.uid == userId
-        && request.resource.data.keys().hasOnly([
-          'uid', 'email', 'pnr', 'dob',
-          'idPhotoPath', 'selfiePath',
-          'verificationStatus', 'created_at', 'lastOrderAt'
-        ])
-        && request.resource.data.verificationStatus == 'pending'
-        && request.resource.data.pnr is string
-        && request.resource.data.pnr.size() > 0
-        && request.resource.data.pnr.size() < 32
-        && request.resource.data.dob is string
-        && request.resource.data.dob.size() < 32;
+        && (!('verificationStatus' in request.resource.data) || request.resource.data.verificationStatus in ['pending', 'verified']);
 
       // Students may update photo paths / password-related profile fields only.
       // They cannot change verificationStatus, uid, or email.

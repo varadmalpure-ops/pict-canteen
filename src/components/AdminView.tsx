@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, deleteDoc, getDoc, setDoc, limit } from 'firebase/firestore';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, type User } from 'firebase/auth';
 import { db, menuItemsCollection, auth, updateOrderStatusFn } from '../firebase';
 import type { MenuItem, Order, OrderStatus } from '../types';
@@ -88,7 +88,7 @@ export default function AdminView() {
   useEffect(() => {
     if (!user) return;
 
-    const q = query(collection(db, 'orders'), orderBy('created_at', 'desc'));
+    const q = query(collection(db, 'orders'), orderBy('created_at', 'desc'), limit(200));
     const unsubOrders = onSnapshot(q, (snapshot) => {
       const allOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order));
       setOrders(allOrders);

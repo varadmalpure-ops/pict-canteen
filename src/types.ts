@@ -28,9 +28,10 @@ export interface Order {
   total_amount: number;
   status: OrderStatus;
   created_at: number | { toMillis?: () => number };
-  payment_status: 'Unverified' | 'Verified';
+  payment_status: 'Verified' | 'Pay at Counter' | 'Pending' | 'Unverified';
   payment_method?: string;
   scheduled_for?: string | null;
   utr_number?: string;
   razorpay_payment_id?: string | null;
+  geo_verified?: boolean;
 }
