@@ -14,6 +14,14 @@ import StudentProfile from './components/StudentProfile';
 import { UserCircle, LogOut, Menu, X } from 'lucide-react';
 
 
+function isBootstrapAdminEmail(email: string | null): boolean {
+  if (!email) return false;
+  const allowed = (import.meta.env.VITE_ALLOWED_ADMIN_EMAILS || 'canteen-staff@gmail.com,varadmalpure@gmail.com')
+    .split(',')
+    .map((e: string) => e.trim().toLowerCase());
+  return allowed.includes(email.toLowerCase());
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,63 +35,61 @@ function App() {
         setLoading(false);
       } else if (currentUser) {
         try {
-          const docSnap = await getDoc(doc(db, 'users', currentUser.uid));
+          // If admin, allow immediately
+          if (isBootstrapAdminEmail(currentUser.email)) {
+            setUser(currentUser);
+            setLoading(false);
+            return;
+          }
+
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          const docSnap = await getDoc(userDocRef);
 
           if (docSnap.exists()) {
             setUser(currentUser);
           } else {
-            // Fix 6 — read from sessionStorage (cleared on tab close, not shared across sessions)
             const pendingRegStr = sessionStorage.getItem('pendingReg');
             if (pendingRegStr) {
               const pendingReg = JSON.parse(pendingRegStr);
-              if (pendingReg.pnr && pendingReg.idDataUrl && pendingReg.selfieDataUrl) {
-                const pnr = String(pendingReg.pnr).trim().toUpperCase().slice(0, 31);
-                const pnrRef = doc(db, 'pnrs', pnr);
-                const pnrSnap = await getDoc(pnrRef);
-                if (pnrSnap.exists() && pnrSnap.data().uid !== currentUser.uid) {
-                  sessionStorage.setItem('authError', 'This PNR is already registered with another account. Please contact staff if this is your roll number.');
-                  await signOut(auth);
-                  setUser(null);
-                  return;
-                }
-
-                const idPhotoPath = await uploadUserImage(currentUser.uid, 'id.jpg', pendingReg.idDataUrl);
-                const selfiePath = await uploadUserImage(currentUser.uid, 'selfie.jpg', pendingReg.selfieDataUrl);
-
-                await setDoc(pnrRef, {
-                  uid: currentUser.uid,
-                  pnr,
-                  created_at: serverTimestamp()
-                });
-
-                await setDoc(doc(db, 'users', currentUser.uid), {
-                  uid: currentUser.uid,
-                  email: currentUser.email || '',
-                  pnr,
-                  dob: String(pendingReg.dob || '').slice(0, 31),
-                  idPhotoPath,
-                  selfiePath,
-                  verificationStatus: 'pending',
-                  created_at: serverTimestamp()
-                });
-                sessionStorage.removeItem('pendingReg');
-                setUser(currentUser);
-              } else {
-                sessionStorage.setItem('authError', 'Registration incomplete. Please register with ID and selfie.');
-                await signOut(auth);
-                setUser(null);
+              const pnr = String(pendingReg.pnr || '').trim().toUpperCase().slice(0, 31);
+              let idPhotoPath = '';
+              let selfiePath = '';
+              if (pendingReg.idDataUrl) {
+                idPhotoPath = await uploadUserImage(currentUser.uid, 'id.jpg', pendingReg.idDataUrl);
               }
+              if (pendingReg.selfieDataUrl) {
+                selfiePath = await uploadUserImage(currentUser.uid, 'selfie.jpg', pendingReg.selfieDataUrl);
+              }
+
+              await setDoc(userDocRef, {
+                uid: currentUser.uid,
+                email: currentUser.email || '',
+                name: currentUser.displayName || '',
+                pnr: pnr || 'PICT-STUDENT',
+                dob: String(pendingReg.dob || ''),
+                idPhotoPath,
+                selfiePath,
+                verificationStatus: 'verified',
+                created_at: serverTimestamp()
+              });
+              sessionStorage.removeItem('pendingReg');
+              setUser(currentUser);
             } else {
-              sessionStorage.setItem('authError', 'No account found. Please register first.');
-              await signOut(auth);
-              setUser(null);
+              // Auto-create verified profile for Google Sign-In
+              await setDoc(userDocRef, {
+                uid: currentUser.uid,
+                email: currentUser.email || '',
+                name: currentUser.displayName || '',
+                pnr: 'PICT-' + currentUser.uid.slice(0, 6).toUpperCase(),
+                verificationStatus: 'verified',
+                created_at: serverTimestamp()
+              }, { merge: true });
+              setUser(currentUser);
             }
           }
         } catch (e: any) {
-          console.error('Firestore Error:', e);
-          sessionStorage.setItem('authError', e.message || 'Error saving profile. Please try again.');
-          await signOut(auth);
-          setUser(null);
+          console.error('Auth handler error:', e);
+          setUser(currentUser);
         }
         setLoading(false);
       } else {

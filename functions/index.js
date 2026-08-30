@@ -138,11 +138,10 @@ async function assertRateLimit(uid) {
       "Complete registration before ordering."
     );
   }
-  // Fix 4 — block unverified/rejected students from ordering
-  if (snap.data().verificationStatus !== "verified") {
+  if (snap.data().verificationStatus === "rejected") {
     throw new functions.https.HttpsError(
       "permission-denied",
-      "Your student ID has not been verified yet. Please wait for staff review."
+      "Your student account has been rejected by staff. Please contact the canteen."
     );
   }
   const last = snap.data().lastOrderAt;
