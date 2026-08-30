@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { onSnapshot, query, where, getDocs, documentId, limit } from 'firebase/firestore';
 import {
   menuItemsCollection,
@@ -159,9 +159,12 @@ export default function StudentView() {
     return () => unsubscribeMenu();
   }, []);
 
+  const pastOrdersLoadedRef = useRef(false);
+
   // Fetch Past Orders independently once
   useEffect(() => {
-    if (!auth.currentUser || auth.currentUser.isAnonymous || menu.length === 0) return;
+    if (!auth.currentUser || auth.currentUser.isAnonymous || menu.length === 0 || pastOrdersLoadedRef.current) return;
+    pastOrdersLoadedRef.current = true;
     
     async function loadPastOrders() {
       try {

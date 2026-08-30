@@ -34,31 +34,28 @@ function App() {
         setUser(null);
         setLoading(false);
       } else if (currentUser) {
-        try {
-          if (isBootstrapAdminEmail(currentUser.email)) {
-            setUser(currentUser);
-            setLoading(false);
-            return;
-          }
-
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          const docSnap = await getDoc(userDocRef);
-
-          if (!docSnap.exists()) {
-            await setDoc(userDocRef, {
-              uid: currentUser.uid,
-              email: currentUser.email || '',
-              name: currentUser.displayName || 'Student',
-              verificationStatus: 'verified',
-              created_at: serverTimestamp()
-            }, { merge: true });
-          }
-          setUser(currentUser);
-        } catch (e: any) {
-          console.error('Auth handler error:', e);
-          setUser(currentUser);
-        }
+        // Set user and unblock UI immediately for instant 0ms load
+        setUser(currentUser);
         setLoading(false);
+
+        // Perform user record sync in the background
+        try {
+          if (!isBootstrapAdminEmail(currentUser.email)) {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const docSnap = await getDoc(userDocRef);
+            if (!docSnap.exists()) {
+              await setDoc(userDocRef, {
+                uid: currentUser.uid,
+                email: currentUser.email || '',
+                name: currentUser.displayName || 'Student',
+                verificationStatus: 'verified',
+                created_at: serverTimestamp()
+              }, { merge: true });
+            }
+          }
+        } catch (e) {
+          console.warn('Background user sync notice:', e);
+        }
       } else {
         setUser(null);
         setLoading(false);

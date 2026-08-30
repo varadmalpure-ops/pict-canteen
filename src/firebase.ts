@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -30,7 +30,11 @@ if (typeof window !== 'undefined' && import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
   }
 }
 
-export const db = getFirestore(app);
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+});
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
@@ -40,10 +44,6 @@ export const getPaymentConfigFn = httpsCallable(functions, 'getPaymentConfig');
 export const createPaymentOrderFn = httpsCallable(functions, 'createPaymentOrder');
 export const updateOrderStatusFn = httpsCallable(functions, 'updateOrderStatus');
 export const setStudentVerificationFn = httpsCallable(functions, 'setStudentVerification');
-
-enableMultiTabIndexedDbPersistence(db).catch((err) => {
-  console.warn('Offline persistence failed:', err.code);
-});
 
 export const menuItemsCollection = collection(db, 'menuItems');
 export const ordersCollection = collection(db, 'orders');

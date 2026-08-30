@@ -21,10 +21,16 @@
   html {
     color-scheme: light dark;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   body {
     @apply bg-slate-50 text-slate-900 dark:bg-[#0f141c] dark:text-slate-100 antialiased transition-colors duration-200;
+    touch-action: manipulation;
+  }
+
+  button, a, input, select {
+    touch-action: manipulation;
   }
 }
 
