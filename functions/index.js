@@ -153,8 +153,28 @@ function isBootstrapAdmin(context) {
   return verified && ["canteen-staff@gmail.com", "varadmalpure@gmail.com"].includes(email);
 }
 
-// Fix 7 — allowed values for scheduled_for field
-const ALLOWED_SCHEDULED_VALUES = [null, "11:00 AM", "1:00 PM"];
+// Validate scheduled_for pickup time (Must be anytime between 9:00 AM and 6:00 PM)
+function isValidScheduledTime(timeStr) {
+  if (timeStr === null || timeStr === undefined || timeStr === "") return true;
+  if (typeof timeStr !== "string") return false;
+  const trimmed = timeStr.trim();
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?:\s*([AaPp][Mm]))?$/);
+  if (!match) return false;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const meridiem = match[3] ? match[3].toUpperCase() : null;
+  if (minutes < 0 || minutes > 59) return false;
+  if (meridiem) {
+    if (hours < 1 || hours > 12) return false;
+    if (meridiem === "PM" && hours < 12) hours += 12;
+    if (meridiem === "AM" && hours === 12) hours = 0;
+  } else {
+    if (hours < 0 || hours > 23) return false;
+  }
+  const totalMins = hours * 60 + minutes;
+  // 9:00 AM (540 mins) to 6:00 PM (1080 mins)
+  return totalMins >= 540 && totalMins <= 1080;
+}
 
 // Daily token numbering reset (e.g. #A-1 on each day)
 async function allocateToken() {
@@ -242,12 +262,17 @@ exports.createPaymentOrder = functions.https.onCall(async (data, context) => {
       throw new functions.https.HttpsError("internal", "Could not create payment order.");
     }
 
+    const scheduledFor = data.scheduled_for || null;
+    if (scheduledFor !== null && !isValidScheduledTime(scheduledFor)) {
+      throw new functions.https.HttpsError("invalid-argument", "Pickup time must be between 9:00 AM and 6:00 PM.");
+    }
+
     const rzOrder = await res.json();
     await db.collection("paymentIntents").doc(rzOrder.id).set({
       uid: context.auth.uid,
       amount: calculatedTotal,
       items: validatedItems,
-      scheduled_for: data.scheduled_for || null,
+      scheduled_for: scheduledFor,
       status: "created",
       created_at: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -278,14 +303,10 @@ exports.placeOrder = functions.https.onCall(async (data, context) => {
     let razorpayPaymentId = null;
     let itemsSource = data.items || [];
 
-    // Fix 7 — validate scheduled_for: must be null, an allowed label, or HH:MM format
+    // Validate scheduled_for: must be null or valid time between 9:00 AM and 6:00 PM
     const scheduledFor = data.scheduled_for || null;
-    if (
-      scheduledFor !== null &&
-      !ALLOWED_SCHEDULED_VALUES.includes(scheduledFor) &&
-      !/^\d{1,2}:\d{2}$/.test(scheduledFor)
-    ) {
-      throw new functions.https.HttpsError("invalid-argument", "Invalid scheduled_for value.");
+    if (scheduledFor !== null && !isValidScheduledTime(scheduledFor)) {
+      throw new functions.https.HttpsError("invalid-argument", "Pickup time must be between 9:00 AM and 6:00 PM.");
     }
 
     const { validatedItems, calculatedTotal, allExpress } = enabled && data.razorpay_payment_id

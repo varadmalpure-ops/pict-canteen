@@ -492,6 +492,11 @@ export default function AdminView() {
                     <span className="text-xs font-bold text-slate-500">
                       ₹{order.total_amount} ({order.payment_status || order.payment_method})
                     </span>
+                    {order.scheduled_for && (
+                      <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                        🕒 {order.scheduled_for}
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-slate-600 font-medium mt-1">
                     {order.items?.map(i => `${i.quantity}x ${i.name}`).join(', ')}

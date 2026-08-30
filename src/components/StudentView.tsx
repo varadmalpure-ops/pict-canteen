@@ -24,6 +24,7 @@ import DishCard from './DishCard';
 import RushMeter from './RushMeter';
 import CartReviewView from './CartReviewView';
 import OrderTrackerModal from './OrderTrackerModal';
+import { formatTime12h } from '../lib/timeUtils';
 
 declare global {
   interface Window {
@@ -321,7 +322,7 @@ export default function StudentView() {
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const scheduleValue = scheduledFor === 'now' ? null : (scheduledFor === 'custom' ? (customTime || null) : scheduledFor);
+  const scheduleValue = scheduledFor === 'now' ? null : (scheduledFor === 'custom' ? (customTime ? formatTime12h(customTime) : null) : scheduledFor);
 
   const submitOrder = async (paymentPayload: Record<string, unknown>) => {
     let position = coords;
@@ -462,20 +463,62 @@ export default function StudentView() {
     : rawCategories.filter(c => c === selectedCategory);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 pt-4 pb-36">
+    <div className="max-w-3xl mx-auto px-4 pb-36 transition-colors duration-200">
       
+      {/* Sticky Google-styled Search Bar & Category Chips - DOCKED FLUSH under Navbar (Zero Gap!) */}
+      <div className="sticky top-16 z-30 bg-slate-50/95 dark:bg-[#0f141c]/95 backdrop-blur-xl pt-2 pb-3 mb-4 border-b border-slate-200/60 dark:border-slate-800/60 -mx-4 px-4 transition-colors">
+        <div className="relative mb-2.5">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+            <Search size={17} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search samosa, cold coffee, noodles, thali..."
+            className="w-full bg-white dark:bg-slate-900 pl-11 pr-10 py-3 rounded-full text-xs font-semibold text-slate-900 dark:text-white outline-none border border-slate-200/90 dark:border-slate-800 shadow-sm focus:border-blue-500 dark:focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 google-touch cursor-pointer"
+              aria-label="Clear search"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+
+        {/* Horizontal Category Filter Pills (Google Pill Style) */}
+        <div className="flex gap-2 overflow-x-auto pb-0.5 text-xs no-scrollbar">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-4 py-1.5 rounded-full font-bold whitespace-nowrap transition-all text-xs google-touch google-ripple cursor-pointer ${
+                selectedCategory === cat
+                  ? 'bg-blue-600 dark:bg-blue-600 text-white shadow-sm shadow-blue-500/25'
+                  : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300/80 dark:hover:bg-slate-700'
+              }`}
+            >
+              {cat === 'ALL' ? '🌟 All Dishes' : cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Live Rush Meter */}
       <RushMeter queueCount={queueCount} />
 
       {/* 1-Tap Repeat Order Banner - Fixed & Stable */}
       {lastOrder && lastOrder.items && (
-        <div className="bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 text-white p-4 rounded-2xl mb-5 flex items-center justify-between shadow-lg shadow-indigo-500/15">
+        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 text-white p-4 rounded-2xl mb-5 flex items-center justify-between shadow-lg shadow-blue-500/15">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 p-2.5 rounded-xl">
               <RotateCcw size={18} />
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-widest font-black opacity-80">
+              <div className="text-[10px] uppercase tracking-widest font-black opacity-90">
                 1-Tap Repeat Order
               </div>
               <div className="font-bold text-xs line-clamp-1 mt-0.5">
@@ -485,58 +528,19 @@ export default function StudentView() {
           </div>
           <button
             onClick={repeatLastOrder}
-            className="bg-white text-indigo-700 hover:bg-indigo-50 px-4 py-2 rounded-xl text-xs font-black shrink-0 shadow-xs active:scale-95 transition-all"
+            className="bg-white text-blue-700 hover:bg-blue-50 px-4 py-2 rounded-xl text-xs font-black shrink-0 shadow-xs google-touch google-ripple transition-all cursor-pointer"
           >
             Re-order ₹{lastOrder.total_amount}
           </button>
         </div>
       )}
 
-      {/* Sticky Search Bar & Category Chips */}
-      <div className="sticky top-18 z-30 bg-white/90 backdrop-blur-xl p-2.5 rounded-2xl shadow-sm border border-slate-200/80 mb-6">
-        <div className="relative mb-2.5">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search samosa, cold coffee, noodles, thali..."
-            className="w-full bg-slate-50 pl-10 pr-9 py-2.5 rounded-xl text-xs font-semibold text-slate-900 outline-none border border-transparent focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-
-        {/* Horizontal Category Filter Pills */}
-        <div className="flex gap-2 overflow-x-auto pb-1 text-xs no-scrollbar">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3.5 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all text-xs ${
-                selectedCategory === cat
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {cat === 'ALL' ? '🌟 All Dishes' : cat}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Recommended For You Section */}
       {recommendations.length > 0 && !searchQuery && selectedCategory === 'ALL' && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-3.5 px-1">
             <Sparkles size={16} className="text-amber-500" />
-            <h3 className="font-extrabold text-sm text-slate-900 tracking-tight">
+            <h3 className="font-extrabold text-sm text-slate-900 dark:text-white tracking-tight">
               Recommended For You
             </h3>
           </div>
@@ -557,10 +561,10 @@ export default function StudentView() {
 
       {/* Dishes by Category */}
       {filteredMenu.length === 0 ? (
-        <div className="p-12 text-center text-slate-400 bg-white rounded-3xl border border-slate-200/80 my-4">
-          <UtensilsCrossed size={36} className="mx-auto mb-2 text-slate-300" />
-          <h4 className="font-bold text-slate-700 text-sm">No dishes found</h4>
-          <p className="text-xs text-slate-400 mt-1">Try another search keyword or select All Dishes.</p>
+        <div className="p-12 text-center text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 my-4">
+          <UtensilsCrossed size={36} className="mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+          <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm">No dishes found</h4>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Try another search keyword or select All Dishes.</p>
         </div>
       ) : (
         <div className="space-y-7">
@@ -570,9 +574,9 @@ export default function StudentView() {
 
             return (
               <div key={category}>
-                <div className="flex justify-between items-baseline mb-3 px-1 border-b border-slate-200/70 pb-2">
-                  <h3 className="font-black text-sm text-slate-900 tracking-tight">{category}</h3>
-                  <span className="text-[11px] font-bold text-slate-400">{categoryItems.length} items</span>
+                <div className="flex justify-between items-baseline mb-3 px-1 border-b border-slate-200/70 dark:border-slate-800/70 pb-2">
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white tracking-tight">{category}</h3>
+                  <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{categoryItems.length} items</span>
                 </div>
                 <div className="grid gap-2.5">
                   {categoryItems.map(item => (
@@ -592,7 +596,7 @@ export default function StudentView() {
         </div>
       )}
 
-      {/* Floating Dynamic Cart Capsule (iOS/Swiggy-style) */}
+      {/* Floating Dynamic Cart Capsule (Google Pill style with elevation) */}
       {cart.length > 0 && (
         <div className="fixed bottom-5 left-0 right-0 px-4 z-30 pointer-events-none">
           <div className="max-w-md mx-auto pointer-events-auto">
@@ -601,15 +605,15 @@ export default function StudentView() {
                 fetchPaymentConfig();
                 setIsPaymentModalOpen(true);
               }}
-              className="w-full bg-slate-900 hover:bg-black text-white rounded-2xl p-3.5 px-5 flex items-center justify-between shadow-2xl shadow-slate-900/30 active:scale-[0.98] transition-all"
+              className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-black dark:hover:bg-blue-700 text-white rounded-full p-3.5 px-5 flex items-center justify-between shadow-2xl shadow-slate-900/30 dark:shadow-blue-600/30 google-touch google-ripple transition-all cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-blue-600 dark:bg-white/20 text-white flex items-center justify-center">
                   <ShoppingCart size={16} />
                 </div>
                 <div className="text-left">
                   <span className="font-bold text-xs block">{totalCartCount} item{totalCartCount > 1 ? 's' : ''} in cart</span>
-                  <span className="text-[11px] text-slate-300 font-medium">
+                  <span className="text-[11px] text-slate-300 dark:text-blue-100 font-medium">
                     {paymentProvider === 'pay_at_counter' ? 'Pay at Counter' : 'Online Payment'}
                   </span>
                 </div>
@@ -617,8 +621,8 @@ export default function StudentView() {
 
               <div className="flex items-center gap-3">
                 <span className="font-black text-lg">₹{cartTotal.toFixed(2)}</span>
-                <span className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors">
-                  Pay ➔
+                <span className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3.5 py-1.5 rounded-full transition-colors">
+                  Review & Pay ➔
                 </span>
               </div>
             </button>
@@ -630,11 +634,11 @@ export default function StudentView() {
       {activeOrders.length > 0 && !isStatusModalOpen && (
         <button
           onClick={() => setIsStatusModalOpen(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl shadow-indigo-600/30 flex items-center justify-center z-40 active:scale-95 transition-all"
+          className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl shadow-blue-600/40 flex items-center justify-center z-40 google-touch google-ripple transition-all cursor-pointer"
           aria-label="View active orders"
         >
           <Receipt size={22} />
-          <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[11px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-white">
+          <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[11px] w-5 h-5 rounded-full flex items-center justify-center font-black border-2 border-white dark:border-slate-900">
             {activeOrders.length}
           </span>
         </button>

@@ -7,6 +7,7 @@ import StudentView from './components/StudentView';
 import StudentAuth from './components/StudentAuth';
 import Navbar from './components/Navbar';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import { ThemeProvider } from './lib/ThemeContext';
 
 const AdminView = lazy(() => import('./components/AdminView'));
 const KitchenView = lazy(() => import('./components/KitchenView'));
@@ -79,29 +80,31 @@ function App() {
   }
 
   return (
-    <Router>
-      <PWAInstallPrompt />
-      <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans text-slate-900">
-        <Navbar user={user} />
+    <ThemeProvider>
+      <Router>
+        <PWAInstallPrompt />
+        <div className="min-h-screen bg-slate-50 dark:bg-[#0f141c] flex flex-col font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
+          <Navbar user={user} />
 
-        <main className="flex-1 w-full">
-          <Suspense fallback={
-            <div className="flex items-center justify-center p-12 text-slate-400 font-semibold text-xs">
-              Loading screen...
-            </div>
-          }>
-            <Routes>
-              <Route path="/" element={user ? <StudentView /> : <StudentAuth />} />
-              <Route path="/profile" element={user ? <StudentProfile /> : <Navigate to="/" />} />
-              <Route path="/admin" element={<AdminView />} />
-              <Route path="/kitchen" element={<KitchenView />} />
-              <Route path="/display" element={<CanteenQRCode url={window.location.origin} />} />
-              <Route path="/live" element={<LiveDisplay />} />
-            </Routes>
-          </Suspense>
-        </main>
-      </div>
-    </Router>
+          <main className="flex-1 w-full">
+            <Suspense fallback={
+              <div className="flex items-center justify-center p-12 text-slate-400 dark:text-slate-500 font-semibold text-xs">
+                Loading screen...
+              </div>
+            }>
+              <Routes>
+                <Route path="/" element={user ? <StudentView /> : <StudentAuth />} />
+                <Route path="/profile" element={user ? <StudentProfile /> : <Navigate to="/" />} />
+                <Route path="/admin" element={<AdminView />} />
+                <Route path="/kitchen" element={<KitchenView />} />
+                <Route path="/display" element={<CanteenQRCode url={window.location.origin} />} />
+                <Route path="/live" element={<LiveDisplay />} />
+              </Routes>
+            </Suspense>
+          </main>
+        </div>
+      </Router>
+    </ThemeProvider>
   );
 }
 
