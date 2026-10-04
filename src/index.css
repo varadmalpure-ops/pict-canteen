@@ -20,16 +20,24 @@
     color-scheme: light;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    scroll-behavior: smooth;
   }
 
   body {
     @apply bg-slate-50 text-slate-900 antialiased;
     touch-action: manipulation;
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   button, a, input, select {
     touch-action: manipulation;
+  }
+
+  /* GPU-accelerate elements likely to animate */
+  .will-change-transform {
+    will-change: transform;
   }
 }
 
@@ -97,14 +105,14 @@
 
 /* Custom scrollbar for webkit */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-300 rounded-full;
+  @apply bg-slate-300/60 rounded-full;
 }
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-slate-400;
@@ -117,4 +125,46 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Smooth enter/exit animations (Material Motion) */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes bounce-gentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.25s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.animate-bounce-gentle {
+  animation: bounce-gentle 1.5s ease-in-out infinite;
+}
+
+/* Performance: contain layout calculations for cards */
+.contain-layout {
+  contain: layout style;
 }

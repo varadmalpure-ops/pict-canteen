@@ -395,7 +395,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
               Recommended For You
             </h3>
           </div>
-          <div className="grid gap-2.5">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
             {recommendations.map(item => (
               <DishCard
                 key={`rec-${item.id}`}
@@ -429,7 +429,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
                   <h3 className="font-black text-sm text-slate-900 tracking-tight">{category}</h3>
                   <span className="text-[11px] font-bold text-slate-400">{categoryItems.length} items</span>
                 </div>
-                <div className="grid gap-2.5">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   {categoryItems.map(item => (
                     <DishCard
                       key={item.id}

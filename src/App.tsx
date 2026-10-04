@@ -40,7 +40,7 @@ function App() {
         setAuthReady(true);
       } else if (currentUser) {
         setUser(currentUser);
-        setUserRecordReady(false);
+        setUserRecordReady(true);
         setAuthReady(true);
 
         void (async () => {

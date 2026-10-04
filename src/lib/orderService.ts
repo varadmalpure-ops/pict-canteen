@@ -24,7 +24,11 @@ export async function createStudentOrder(input: {
 
   const totalAmount = items.reduce((total, item) => total + item.price * item.quantity, 0);
   const orderRef = doc(ordersCollection);
-  const tokenNumber = `A-${orderRef.id}`;
+  // Generate a clean 4-digit numeric token: minutes-of-day * 7 + random offset, mod 10000
+  const now = new Date();
+  const minutesSeed = now.getHours() * 60 + now.getMinutes();
+  const randomPart = Math.floor(Math.random() * 97); // small prime-range jitter
+  const tokenNumber = String(((minutesSeed * 7 + randomPart) % 9000) + 1000); // always 4 digits: 1000–9999
   const status: OrderStatus = 'Pending';
   const order = {
     uid: input.uid,

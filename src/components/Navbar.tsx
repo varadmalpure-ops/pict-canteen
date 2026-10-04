@@ -47,6 +47,7 @@ export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: N
 
         <nav className="hidden items-center gap-1 md:flex" aria-label="Main navigation">
           <Link to="/" className={linkClass('/')}>Menu</Link>
+          <Link to="/kitchen" className={linkClass('/kitchen')}>Kitchen KDS</Link>
           {user ? (
             <>
               <Link to="/profile" className={linkClass('/profile')}><UserRound size={16} /> Account</Link>
@@ -61,6 +62,7 @@ export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: N
       {menuOpen && (
         <nav className="absolute left-0 right-0 top-16 border-b border-slate-200 bg-white p-3 shadow-lg md:hidden" aria-label="Mobile navigation">
           <Link to="/" onClick={closeMenu} className={`${linkClass('/')} w-full justify-start`}>Menu</Link>
+          <Link to="/kitchen" onClick={closeMenu} className={`${linkClass('/kitchen')} w-full justify-start`}>Kitchen KDS</Link>
           {user ? (
             <>
               <Link to="/profile" onClick={closeMenu} className={`${linkClass('/profile')} w-full justify-start`}><UserRound size={16} /> Account</Link>

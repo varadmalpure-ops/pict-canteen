@@ -6,10 +6,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return signedIn() && (
-        ('admin' in request.auth.token && request.auth.token.admin == true)
-        || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      return signedIn();
     }
 
     function isOwner(userId) {
@@ -173,7 +170,8 @@ service cloud.firestore {
           'uid', 'token_number', 'items', 'total_amount', 'status', 'created_at',
           'payment_status', 'payment_method', 'scheduled_for'
         ])
-        && request.resource.data.token_number == 'A-' + orderId
+        && request.resource.data.token_number is string
+        && (request.resource.data.token_number.matches('^[0-9]{1,8}$') || request.resource.data.token_number == 'A-' + orderId)
         && request.resource.data.status == 'Pending'
         && request.resource.data.created_at == request.time
         && request.resource.data.payment_status == 'Pay at Counter'

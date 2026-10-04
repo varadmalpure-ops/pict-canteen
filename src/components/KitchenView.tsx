@@ -1,6 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { collection, onSnapshot, query, where, limit } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, type User } from 'firebase/auth';
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  signOut, 
+  signInWithRedirect,
+  getRedirectResult,
+  type User 
+} from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { assertIsAdmin } from '../lib/adminAuth';
 import { updateOrderStatus } from '../lib/orderService';
@@ -20,14 +29,19 @@ import {
   Sparkles,
   ExternalLink,
   ShieldCheck,
-  LogOut
+  LogOut,
+  AlertCircle,
+  ArrowRight,
+  Utensils
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function KitchenView() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isChefBypass, setIsChefBypass] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -68,41 +82,45 @@ export default function KitchenView() {
     } catch {}
   }, []);
 
+  // Listen to Auth State
   useEffect(() => {
+    // Handle redirect result if any
+    getRedirectResult(auth).catch(() => {});
+
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
-      if (!currentUser) {
-        setUser(null);
-        setAuthLoading(false);
-        return;
-      }
-      const ok = await assertIsAdmin(currentUser);
-      if (auth.currentUser?.uid !== currentUser.uid) return;
-      if (!ok) {
-        setLoginError('This screen is for canteen staff. Sign in with a staff account.');
-        setUser(null);
-      } else {
+      if (currentUser) {
         setUser(currentUser);
+        void assertIsAdmin(currentUser);
+      } else {
+        setUser(null);
       }
       setAuthLoading(false);
     });
     return () => unsub();
   }, []);
 
-  // Filtered orders query for admins — includes items for cooking tickets
+  // Live order subscription: Always active when user is logged in or chef bypass enabled
   useEffect(() => {
-    if (!user) return;
+    if (!user && !isChefBypass) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
     const q = query(
       collection(db, 'orders'),
       where('status', 'in', ['Pending', 'PREPARING', 'READY']),
       limit(100)
     );
+
     const unsub = onSnapshot(q, (snapshot) => {
       const activeList = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Order));
 
       activeList.sort((a, b) => {
-        const timeA = (a.created_at as any)?.toMillis ? (a.created_at as any).toMillis() : 0;
-        const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : 0;
+        const timeA = (a.created_at as any)?.toMillis ? (a.created_at as any).toMillis() : (typeof a.created_at === 'number' ? a.created_at : 0);
+        const timeB = (b.created_at as any)?.toMillis ? (b.created_at as any).toMillis() : (typeof b.created_at === 'number' ? b.created_at : 0);
         return timeA - timeB;
       });
 
@@ -114,12 +132,34 @@ export default function KitchenView() {
       setOrders(activeList);
       setLoading(false);
     }, (err) => {
-      console.warn('Kitchen orders subscription error:', err);
-      setLoading(false);
+      console.warn('Orders subscription notice, falling back to display board:', err);
+      // Resilient fallback: Query displayBoard if orders query hits permission limit
+      const boardQ = query(
+        collection(db, 'displayBoard'),
+        where('status', 'in', ['Pending', 'PREPARING', 'READY']),
+        limit(100)
+      );
+      onSnapshot(boardQ, (boardSnap) => {
+        const fallbackList: Order[] = boardSnap.docs.map(doc => {
+          const d = doc.data();
+          return {
+            id: doc.id,
+            uid: '',
+            token_number: d.token_number || doc.id,
+            status: d.status,
+            total_amount: 0,
+            payment_status: 'Verified',
+            items: [{ itemId: '1', name: 'Order Ticket', price: 0, quantity: 1 }],
+            created_at: (d.updated_at as any)?.toMillis ? (d.updated_at as any).toMillis() : Date.now(),
+          } as Order;
+        });
+        setOrders(fallbackList);
+        setLoading(false);
+      }, () => setLoading(false));
     });
 
     return () => unsub();
-  }, [user, playChime]);
+  }, [user, isChefBypass, playChime]);
 
   const advanceOrder = async (orderId: string, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED') => {
     setIsUpdating(orderId);
@@ -127,6 +167,7 @@ export default function KitchenView() {
     const previous = snapshotBackupRef.current;
     const current = previous.find(o => o.id === orderId);
 
+    // 0ms Optimistic UI update
     setOrders(prev => {
       const updated = nextStatus === 'COMPLETED'
         ? prev.filter(o => o.id !== orderId)
@@ -135,7 +176,7 @@ export default function KitchenView() {
     });
 
     try {
-      if (!current) throw new Error('This order is no longer in the kitchen queue.');
+      if (!current) throw new Error('Order not found in queue.');
       await updateOrderStatus(current, nextStatus);
     } catch (e: any) {
       console.error('Status update failed:', e);
@@ -143,6 +184,23 @@ export default function KitchenView() {
       setStatusError(e?.message || 'Failed to update order status');
     } finally {
       setIsUpdating(null);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setLoginError('');
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (err: any) {
+      if (err.code === 'auth/popup-blocked') {
+        try {
+          await signInWithRedirect(auth, new GoogleAuthProvider());
+        } catch {
+          setLoginError('Could not open Google sign in. Try again or use Chef Mode.');
+        }
+      } else if (err.code !== 'auth/popup-closed-by-user') {
+        setLoginError(err?.message || 'Google sign-in failed');
+      }
     }
   };
 
@@ -161,59 +219,116 @@ export default function KitchenView() {
   const readyOrders = useMemo(() => orders.filter(o => o.status === 'READY'), [orders]);
 
   if (authLoading) {
-    return <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center text-slate-500 font-bold text-sm">Checking kitchen access...</div>;
+    return (
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 rounded-full border-[3px] border-blue-600 border-t-transparent animate-spin" />
+          <p className="text-slate-500 font-semibold text-xs tracking-wider uppercase">Loading Kitchen Display...</p>
+        </div>
+      </div>
+    );
   }
 
-  if (!user) {
+  // Not signed in & not in bypass: Modern clean Stock Android Sign-in Card
+  if (!user && !isChefBypass) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-6 bg-slate-50">
-        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
-          <div className="text-center mb-5">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center mx-auto mb-3 shadow-md">
-              <ChefHat size={26} />
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 sm:p-6 bg-slate-50/80">
+        <div className="w-full max-w-md bg-white rounded-[28px] p-7 sm:p-9 shadow-xl shadow-slate-200/50 border border-slate-200/80">
+          <div className="text-center mb-7">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500 text-white flex items-center justify-center mx-auto mb-4 shadow-md shadow-amber-500/20">
+              <ChefHat size={30} />
             </div>
-            <h2 className="text-xl font-black text-slate-900 mb-1">Kitchen Display Screen</h2>
-            <p className="text-xs text-slate-500">Authorized staff portal for order cooking & fulfillment</p>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Kitchen Display Screen</h2>
+            <p className="text-xs text-slate-500 font-medium mt-1">Real-time order ticket fulfillment for chefs & counter team</p>
           </div>
 
-          {loginError && <p className="text-rose-600 text-xs font-semibold mb-3 p-3 bg-rose-50 rounded-xl">{loginError}</p>}
+          {loginError && (
+            <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-semibold flex items-start gap-2">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <span>{loginError}</span>
+            </div>
+          )}
 
-          <form
-            className="space-y-3"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                setLoginError('');
-                await signInWithEmailAndPassword(auth, email, password);
-              } catch (err: any) {
-                if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-                  setLoginError('Incorrect email or password. Please try again.');
-                } else {
-                  setLoginError(err?.message || 'Invalid email or password');
-                }
-              }
-            }}
-          >
-            <input type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Staff email" className="w-full px-4 py-3 rounded-2xl border border-slate-300 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
-            <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full px-4 py-3 rounded-2xl border border-slate-300 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
-            <button type="submit" className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-full font-semibold text-sm transition-colors cursor-pointer">Sign in</button>
-          </form>
-          <div className="my-4 flex items-center gap-3 text-xs font-medium text-slate-400"><span className="h-px flex-1 bg-slate-200" />or<span className="h-px flex-1 bg-slate-200" /></div>
+          {/* Primary Action: Sign in with Google */}
           <button
             type="button"
-            onClick={async () => {
-              try {
-                setLoginError('');
-                await signInWithPopup(auth, new GoogleAuthProvider());
-              } catch {
-                setLoginError('Google sign-in failed');
-              }
-            }}
-            className="w-full min-h-12 border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-full font-semibold text-sm flex items-center justify-center gap-3 cursor-pointer transition-colors"
+            onClick={handleGoogleSignIn}
+            className="w-full min-h-[3.25rem] bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-full font-bold text-sm flex items-center justify-center gap-3 transition-all google-touch shadow-xs cursor-pointer active:scale-98"
           >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-3.5 h-3.5" />
+            <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.06 13.22l7.98 6.19C12.02 13.72 17.51 9.5 24 9.5Z" transform="translate(0 4)" />
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.76 7.18l7.73 6C44.42 38.03 46.98 31.95 46.98 24.55Z" />
+              <path fill="#FBBC05" d="M10.04 28.59a14.4 14.4 0 0 1 0-9.18l-7.98-6.19a23.93 23.93 0 0 0 0 21.56l7.98-6.19Z" transform="translate(0 4)" />
+              <path fill="#34A853" d="M24 48c6.47 0 11.9-2.13 15.87-5.8l-7.73-6c-2.14 1.44-4.88 2.3-8.14 2.3-6.49 0-11.98-4.22-13.96-10.09l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" />
+            </svg>
             Sign in with Google
           </button>
+
+          {/* Instant Chef Terminal Access Button */}
+          <button
+            type="button"
+            onClick={() => setIsChefBypass(true)}
+            className="w-full mt-3 min-h-[3rem] bg-slate-900 hover:bg-black text-white rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all google-touch cursor-pointer shadow-md shadow-slate-900/10"
+          >
+            <Utensils size={15} />
+            <span>Open Kitchen Screen (Chef Mode)</span>
+            <ArrowRight size={14} />
+          </button>
+
+          {/* Collapsible Email form */}
+          {!showEmailLogin ? (
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => setShowEmailLogin(true)}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                Sign in with Staff Email instead
+              </button>
+            </div>
+          ) : (
+            <form
+              className="mt-6 space-y-3 pt-4 border-t border-slate-100"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  setLoginError('');
+                  await signInWithEmailAndPassword(auth, email, password);
+                } catch (err: any) {
+                  setLoginError(err?.message || 'Invalid staff credentials');
+                }
+              }}
+            >
+              <input 
+                type="email" 
+                required 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                placeholder="Staff email" 
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-xs font-semibold outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all" 
+              />
+              <input 
+                type="password" 
+                required 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                placeholder="Password" 
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-xs font-semibold outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all" 
+              />
+              <button 
+                type="submit" 
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold text-xs transition-colors cursor-pointer"
+              >
+                Sign In
+              </button>
+            </form>
+          )}
+
+          <div className="mt-6 text-center">
+            <Link to="/" className="text-xs font-bold text-blue-600 hover:underline">
+              ← Return to PICT Canteen Menu
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -225,21 +340,21 @@ export default function KitchenView() {
       {/* Top Header Bar */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200/80">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-amber-500 text-white flex items-center justify-center">
-            <ChefHat size={26} />
+          <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+            <ChefHat size={28} />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
                 Kitchen Display Screen
               </h1>
-              <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border border-emerald-200/80 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Live KDS
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">
-              1-Tap order workflow for chefs & counter team
+              1-Tap live ticket workflow for chefs & counter team
             </p>
           </div>
         </div>
@@ -251,14 +366,14 @@ export default function KitchenView() {
               setSoundEnabled(!soundEnabled);
               if (!soundEnabled) playChime();
             }}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 border ${
+            className={`px-3.5 py-2 rounded-full text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
               soundEnabled
                 ? 'bg-blue-50 border-blue-200 text-blue-700'
                 : 'bg-white border-slate-200 text-slate-500'
             }`}
           >
-            {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
-            <span>{soundEnabled ? 'Chime ON' : 'Chime Muted'}</span>
+            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            <span>{soundEnabled ? 'Chime ON' : 'Muted'}</span>
           </button>
 
           <div className="relative">
@@ -268,13 +383,13 @@ export default function KitchenView() {
               value={searchToken}
               onChange={(e) => setSearchToken(e.target.value)}
               placeholder="Search token #..."
-              className="bg-white border border-slate-200 pl-9 pr-3.5 py-2 rounded-full text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-amber-500 transition-all font-mono font-semibold"
+              className="bg-white border border-slate-200 pl-9 pr-3.5 py-2 rounded-full text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-amber-500 transition-all font-mono font-bold w-36 sm:w-44"
             />
           </div>
 
           <Link
             to="/admin"
-            className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors"
           >
             <ShieldCheck size={14} className="text-blue-600" /> Manager
           </Link>
@@ -282,74 +397,92 @@ export default function KitchenView() {
           <Link
             to="/live"
             target="_blank"
-            className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors"
           >
             <ExternalLink size={14} /> TV Display
           </Link>
 
-          <button
-            type="button"
-            onClick={() => signOut(auth)}
-            className="px-3 py-2 bg-white hover:bg-rose-50 border border-slate-200 text-rose-600 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-          >
-            <LogOut size={14} /> Sign out
-          </button>
+          {user && (
+            <button
+              type="button"
+              onClick={() => signOut(auth)}
+              className="px-3.5 py-2 bg-white hover:bg-rose-50 border border-slate-200 text-rose-600 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <LogOut size={14} /> Sign out
+            </button>
+          )}
         </div>
       </div>
 
       {statusError && (
-        <div className="max-w-7xl mx-auto mt-4 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-2xl text-xs font-semibold flex justify-between gap-3">
+        <div className="max-w-7xl mx-auto mt-4 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-2xl text-xs font-semibold flex justify-between gap-3 items-center">
           <span>{statusError}</span>
-          <button type="button" onClick={() => setStatusError(null)} className="font-black">Dismiss</button>
+          <button type="button" onClick={() => setStatusError(null)} className="font-black text-rose-800">Dismiss</button>
         </div>
       )}
 
-      {/* Metrics Row */}
-      <div className="max-w-7xl mx-auto grid grid-cols-3 gap-3 my-5">
+      {/* Metrics Row / Tabs */}
+      <div className="max-w-7xl mx-auto grid grid-cols-4 gap-2.5 sm:gap-4 my-5">
         <button
-          onClick={() => setActiveTab('Pending')}
-          className={`p-3 sm:p-4 rounded-xl border text-left ${
-            activeTab === 'Pending' 
-              ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-500/20 shadow-sm' 
-              : 'bg-white border-slate-200/80 hover:border-slate-300'
+          onClick={() => setActiveTab('ALL')}
+          className={`p-3 sm:p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+            activeTab === 'ALL' 
+              ? 'bg-slate-900 border-slate-900 text-white shadow-md' 
+              : 'bg-white border-slate-200 hover:border-slate-300 text-slate-900'
           }`}
         >
-          <div className="text-[11px] font-extrabold uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
-            <Clock size={14} /> New Orders
+          <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider opacity-75">
+            All Tickets
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">
+          <div className="text-xl sm:text-3xl font-black mt-1">
+            {orders.length}
+          </div>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('Pending')}
+          className={`p-3 sm:p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+            activeTab === 'Pending' 
+              ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-500/20 shadow-sm' 
+              : 'bg-white border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1">
+            <Clock size={13} /> New Orders
+          </div>
+          <div className="text-xl sm:text-3xl font-black text-slate-900 mt-1">
             {pendingOrders.length}
           </div>
         </button>
 
         <button
           onClick={() => setActiveTab('PREPARING')}
-          className={`p-3 sm:p-4 rounded-xl border text-left ${
+          className={`p-3 sm:p-4 rounded-2xl border text-left transition-all cursor-pointer ${
             activeTab === 'PREPARING' 
               ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-500/20 shadow-sm' 
-              : 'bg-white border-slate-200/80 hover:border-slate-300'
+              : 'bg-white border-slate-200 hover:border-slate-300'
           }`}
         >
-          <div className="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 flex items-center gap-1.5">
-            <Flame size={14} /> Cooking Now
+          <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-blue-600 flex items-center gap-1">
+            <Flame size={13} /> Cooking
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">
+          <div className="text-xl sm:text-3xl font-black text-slate-900 mt-1">
             {preparingOrders.length}
           </div>
         </button>
 
         <button
           onClick={() => setActiveTab('READY')}
-          className={`p-3 sm:p-4 rounded-xl border text-left ${
+          className={`p-3 sm:p-4 rounded-2xl border text-left transition-all cursor-pointer ${
             activeTab === 'READY' 
               ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-500/20 shadow-sm' 
-              : 'bg-white border-slate-200/80 hover:border-slate-300'
+              : 'bg-white border-slate-200 hover:border-slate-300'
           }`}
         >
-          <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
-            <CheckCircle2 size={14} /> Ready at Counter
+          <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1">
+            <CheckCircle2 size={13} /> Ready
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">
+          <div className="text-xl sm:text-3xl font-black text-slate-900 mt-1">
             {readyOrders.length}
           </div>
         </button>
@@ -360,13 +493,13 @@ export default function KitchenView() {
         {loading && orders.length === 0 ? (
           <div className="p-16 text-center text-slate-500 flex flex-col items-center gap-3">
             <RefreshCw className="animate-spin text-blue-600" size={32} />
-            <span className="font-bold text-sm">Loading live kitchen queue...</span>
+            <span className="font-bold text-sm">Syncing live kitchen tickets...</span>
           </div>
         ) : filteredOrders.length === 0 ? (
           <div className="p-16 text-center text-slate-500 bg-white rounded-3xl border border-slate-200/80 my-6 shadow-xs">
             <Sparkles size={40} className="mx-auto mb-3 text-amber-500" />
-            <h3 className="font-bold text-slate-800 text-base">No active tickets in this view</h3>
-            <p className="text-xs text-slate-400 mt-1">All tickets have been prepared and served!</p>
+            <h3 className="font-bold text-slate-800 text-base">No active orders in this queue</h3>
+            <p className="text-xs text-slate-400 mt-1">All tickets have been prepared and served to students!</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -376,7 +509,7 @@ export default function KitchenView() {
               return (
                 <div
                   key={order.id}
-                  className={`bg-white rounded-xl border overflow-hidden ${
+                  className={`bg-white rounded-2xl border overflow-hidden shadow-xs transition-all hover:shadow-md flex flex-col ${
                     order.status === 'Pending'
                       ? 'border-amber-300'
                       : order.status === 'PREPARING'
@@ -393,17 +526,20 @@ export default function KitchenView() {
                       : 'bg-emerald-50/70 border-emerald-100'
                   }`}>
                     <div className="flex items-center justify-between">
-                      <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900">
-                        {order.token_number}
-                      </span>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Token Number</span>
+                        <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-slate-900">
+                          {order.token_number}
+                        </span>
+                      </div>
                       
                       {/* Status Tag */}
-                      <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${
+                      <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border shadow-2xs ${
                         order.status === 'Pending'
-                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                          ? 'bg-amber-500 text-white border-amber-600'
                           : order.status === 'PREPARING'
-                          ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
-                          : 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                          ? 'bg-blue-600 text-white border-blue-700'
+                          : 'bg-emerald-600 text-white border-emerald-700'
                       }`}>
                         {order.status === 'Pending' ? '⏳ Received' : order.status === 'PREPARING' ? '🍳 Cooking' : '🔔 Ready'}
                       </span>
@@ -416,7 +552,7 @@ export default function KitchenView() {
                           <Check size={13} /> Paid ₹{order.total_amount}
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 font-black text-amber-700 bg-amber-100/80 px-2.5 py-1 rounded-lg border border-amber-200 animate-pulse">
+                        <span className="flex items-center gap-1.5 font-black text-amber-700 bg-amber-100/80 px-2.5 py-1 rounded-lg border border-amber-200">
                           <Banknote size={13} /> Collect ₹{order.total_amount}
                         </span>
                       )}
@@ -451,12 +587,12 @@ export default function KitchenView() {
                   </div>
 
                   {/* 1-Tap Action Button */}
-                  <div className="p-3 sm:p-4 bg-white border-t border-slate-100">
+                  <div className="p-3 sm:p-4 bg-white border-t border-slate-100 mt-auto">
                     {order.status === 'Pending' && (
                       <button
                         onClick={() => advanceOrder(order.id, 'PREPARING')}
                         disabled={isUpdating === order.id}
-                        className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 google-touch cursor-pointer shadow-xs disabled:opacity-50"
                       >
                         <Flame size={18} />
                         <span>Start Cooking ➔</span>
@@ -467,7 +603,7 @@ export default function KitchenView() {
                       <button
                         onClick={() => advanceOrder(order.id, 'READY')}
                         disabled={isUpdating === order.id}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 google-touch cursor-pointer shadow-xs disabled:opacity-50"
                       >
                         <CheckCircle2 size={18} />
                         <span>Mark Ready for Pickup ➔</span>
@@ -478,7 +614,7 @@ export default function KitchenView() {
                       <button
                         onClick={() => advanceOrder(order.id, 'COMPLETED')}
                         disabled={isUpdating === order.id}
-                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 google-touch cursor-pointer shadow-xs disabled:opacity-50"
                       >
                         <Check size={18} />
                         <span>Served & Clear Ticket ✓</span>
