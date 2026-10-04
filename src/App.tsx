@@ -10,7 +10,7 @@ import PWAInstallPrompt from './components/PWAInstallPrompt';
 import OrderTrackerModal from './components/OrderTrackerModal';
 import { ThemeProvider } from './lib/ThemeContext';
 import type { Order } from './types';
-import { Receipt } from 'lucide-react';
+import { Receipt, UtensilsCrossed } from 'lucide-react';
 
 const AdminView = lazy(() => import('./components/AdminView'));
 const KitchenView = lazy(() => import('./components/KitchenView'));
@@ -21,10 +21,35 @@ const StudentProfile = lazy(() => import('./components/StudentProfile'));
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [contentReady, setContentReady] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+      return true;
+    }
+    try {
+      const cached = localStorage.getItem('pict_canteen_cached_menu_v1');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return true;
+      }
+    } catch {}
+    return false;
+  });
   const [userRecordReady, setUserRecordReady] = useState(false);
   const [activeOrdersEntry, setActiveOrdersEntry] = useState<{ uid: string; orders: Order[] } | null>(null);
   const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
   const activeOrders = activeOrdersEntry?.uid === user?.uid ? activeOrdersEntry?.orders ?? [] : [];
+
+  const handleContentReady = useCallback(() => {
+    setContentReady(true);
+  }, []);
+
+  // Safety fallback: reveal page after 1.2s max under slow networks
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setContentReady(true);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     setIsOrdersModalOpen(false);
@@ -116,21 +141,39 @@ function App() {
     setIsOrdersModalOpen(false);
   }, []);
 
-  if (!authReady) {
-    return (
-      <ThemeProvider>
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center" aria-label="Loading PICT Canteen">
-          <div className="h-8 w-8 rounded-full border-[3px] border-blue-600 border-t-transparent animate-spin" />
-        </div>
-      </ThemeProvider>
-    );
-  }
+  const isAppFullyLoaded = authReady && contentReady;
 
   return (
     <ThemeProvider>
       <Router>
         <PWAInstallPrompt />
-        <div className="min-h-screen bg-transparent flex flex-col font-sans text-slate-900 transition-colors">
+
+        {/* Unified Loading Splash: keeps entire page hidden until 100% ready */}
+        {!isAppFullyLoaded && (
+          <div
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4"
+            aria-label="Loading PICT Canteen"
+          >
+            <div className="bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-2xl rounded-3xl p-8 max-w-xs w-full text-center flex flex-col items-center animate-in zoom-in-95 duration-200">
+              <div className="w-16 h-16 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30 mb-4 animate-bounce">
+                <UtensilsCrossed size={32} />
+              </div>
+              <h1 className="text-xl font-black text-slate-950 tracking-tight">PICT Canteen</h1>
+              <p className="text-[11px] font-bold text-slate-500 mt-1">100% Pure Vegetarian Campus Kitchen</p>
+              <div className="mt-6 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-black shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+                <span>Loading canteen...</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Complete Webpage: renders only all-at-once with seamless fade-in */}
+        <div
+          className={`min-h-screen bg-transparent flex flex-col font-sans text-slate-900 transition-opacity duration-300 ${
+            isAppFullyLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
           <Navbar
             user={user}
             activeOrders={activeOrders}
@@ -153,6 +196,7 @@ function App() {
                       sharedActiveOrders={activeOrders}
                       onOrderPlaced={handleOrderPlaced}
                       onOrderRejected={handleOrderRejected}
+                      onReady={handleContentReady}
                     />
                   }
                 />

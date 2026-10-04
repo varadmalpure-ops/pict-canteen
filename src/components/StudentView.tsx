@@ -13,7 +13,6 @@ import {
   RotateCcw,
   Sparkles,
   X,
-  Loader2,
   UtensilsCrossed,
   Star,
   Shield,
@@ -33,6 +32,7 @@ type StudentViewProps = {
   sharedActiveOrders: Order[];
   onOrderPlaced: (order: Order) => void;
   onOrderRejected: (orderId: string) => void;
+  onReady?: () => void;
 };
 
 // Canonical 8 most bought Pune canteen staples
@@ -47,19 +47,50 @@ const TOP_8_MOST_BOUGHT_PATTERNS = [
   { pattern: /dal khichadi|khichadi/i, title: 'Dal Khichadi' },
 ];
 
-export default function StudentView({ user, userRecordReady, sharedActiveOrders, onOrderPlaced, onOrderRejected }: StudentViewProps) {
-  const [menu, setMenu] = useState<MenuItem[]>([]);
+export default function StudentView({ user, userRecordReady, sharedActiveOrders, onOrderPlaced, onOrderRejected, onReady }: StudentViewProps) {
+  // Instant menu hydration from local cache (0ms delay on reload)
+  const [menu, setMenu] = useState<MenuItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('pict_canteen_cached_menu_v1');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
   const [cart, setCart] = useState<OrderItem[]>([]);
   const activeOrders = sharedActiveOrders;
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [selectedFoodItem, setSelectedFoodItem] = useState<MenuItem | null>(null);
-  const [lastOrderEntry, setLastOrderEntry] = useState<{ uid: string; order: Order } | null>(null);
+  
+  // Instant last order hydration from cache
+  const [lastOrderEntry, setLastOrderEntry] = useState<{ uid: string; order: Order } | null>(() => {
+    if (!user?.uid) return null;
+    try {
+      const cached = localStorage.getItem(`pict_canteen_last_order_${user.uid}`);
+      if (cached) {
+        return { uid: user.uid, order: JSON.parse(cached) };
+      }
+    } catch {}
+    return null;
+  });
   const lastOrder = lastOrderEntry?.uid === user?.uid ? lastOrderEntry?.order ?? null : null;
-  const [queueCount, setQueueCount] = useState<number | null>(null);
+
+  // Immediate stable queue state (0 default, no layout shifting)
+  const [queueCount, setQueueCount] = useState<number | null>(() => {
+    try {
+      const cached = sessionStorage.getItem('pict_canteen_cached_queue');
+      if (cached !== null) return Number(cached);
+    } catch {}
+    return 0;
+  });
+
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => menu.length === 0);
   const [recommendationEntry, setRecommendationEntry] = useState<{ uid: string; items: MenuItem[] } | null>(null);
   const userPastRecs = useMemo(() => {
     return recommendationEntry?.uid === user?.uid ? recommendationEntry?.items ?? [] : [];
@@ -71,7 +102,14 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
   const [customTime, setCustomTime] = useState<string>('');
   const [orderNotice, setOrderNotice] = useState<string | null>(null);
 
-  // Firestore menu listener with immediate hydration
+  // Notify parent when menu is ready
+  useEffect(() => {
+    if (menu.length > 0) {
+      onReady?.();
+    }
+  }, [menu.length, onReady]);
+
+  // Firestore menu listener with background update & caching
   useEffect(() => {
     const unsubscribeMenu = onSnapshot(query(menuItemsCollection, limit(200)), (snapshot) => {
       const items = snapshot.docs
@@ -89,16 +127,23 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
         return (a.name || '').localeCompare(b.name || '');
       });
       setMenu(items);
+      try {
+        localStorage.setItem('pict_canteen_cached_menu_v1', JSON.stringify(items));
+      } catch {}
+      setLoading(false);
+      onReady?.();
       setCart(prevCart => prevCart.flatMap(cartItem => {
         const found = items.find(m => m.id === cartItem.itemId);
         if (!found || !found.is_available) return [];
         return [{ ...cartItem, name: found.name, price: found.price, is_express: found.is_express }];
       }));
+    }, () => {
       setLoading(false);
-    }, () => setLoading(false));
+      onReady?.();
+    });
 
     return () => unsubscribeMenu();
-  }, []);
+  }, [onReady]);
 
   // Compute the 8 most bought food items synchronously (0ms delay, no lag on reload)
   const top8Bestsellers = useMemo<MenuItem[]>(() => {
@@ -225,11 +270,14 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
             ? latest.created_at
             : latest.created_at?.toMillis?.() || 0;
           setLastOrderEntry((current) => {
-            if (current?.uid !== activeUid) return { uid: activeUid, order: latest };
-            const currentTime = typeof current.order.created_at === 'number'
-              ? current.order.created_at
-              : current.order.created_at?.toMillis?.() || 0;
-            return currentTime > latestTime ? current : { uid: activeUid, order: latest };
+            const nextEntry = (current?.uid !== activeUid) ? { uid: activeUid, order: latest } : {
+              uid: activeUid,
+              order: ((typeof current.order.created_at === 'number' ? current.order.created_at : current.order.created_at?.toMillis?.() || 0) > latestTime) ? current.order : latest
+            };
+            try {
+              localStorage.setItem(`pict_canteen_last_order_${activeUid}`, JSON.stringify(nextEntry.order));
+            } catch {}
+            return nextEntry;
           });
         }
       } catch (e) {
@@ -239,12 +287,15 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
     return () => { cancelled = true; };
   }, [menu, user]);
 
-  // Queue count
+  // Queue count with sessionStorage persistence
   useEffect(() => {
     const qQueue = query(displayBoardCollection, where('status', 'in', ['Pending', 'PREPARING']), limit(100));
     const unsubscribe = onSnapshot(qQueue, (snapshot) => {
       setQueueCount(snapshot.size);
-    }, () => setQueueCount(null));
+      try {
+        sessionStorage.setItem('pict_canteen_cached_queue', String(snapshot.size));
+      } catch {}
+    }, () => setQueueCount(0));
     return () => unsubscribe();
   }, []);
 
@@ -370,12 +421,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
   }, [rawCategories, selectedCategory]);
 
   if (loading) {
-    return (
-      <div className="flex flex-col h-[calc(100vh-4rem)] items-center justify-center text-slate-500 gap-3">
-        <Loader2 className="animate-spin text-blue-700" size={32} />
-        <span className="font-extrabold text-xs tracking-wide">Loading PICT canteen menu...</span>
-      </div>
-    );
+    return null;
   }
 
   return (

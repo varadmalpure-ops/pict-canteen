@@ -9,9 +9,45 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>PICT Canteen</title>
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('pict_canteen_theme_preference') || 'mint';
+          var themes = {
+            mint: { bg: '#065f46', pattern: '/patterns/food-doodle-light.svg' },
+            saffron: { bg: '#eab308', pattern: '/patterns/food-doodle-dark.svg' },
+            chai: { bg: '#9a3412', pattern: '/patterns/food-doodle-light.svg' },
+            paprika: { bg: '#be123c', pattern: '/patterns/food-doodle-light.svg' },
+            slate: { bg: '#e8e2d8', pattern: '/patterns/food-doodle-dark.svg' },
+            midnight: { bg: '#0b0f19', pattern: '/patterns/food-doodle-light.svg' }
+          };
+          var t = themes[saved] || themes.mint;
+          document.documentElement.setAttribute('data-food-theme', saved);
+          document.body.style.backgroundColor = t.bg;
+          document.body.style.backgroundImage = "url('" + t.pattern + "')";
+          document.body.style.backgroundRepeat = 'repeat';
+          document.body.style.backgroundSize = '360px 360px';
+          document.body.style.backgroundAttachment = 'fixed';
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; font-family: system-ui, -apple-system, sans-serif;">
+        <div style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(226, 232, 240, 0.9); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); border-radius: 1.5rem; padding: 2rem; max-width: 20rem; width: 100%; text-align: center;">
+          <div style="width: 4rem; height: 4rem; border-radius: 1.25rem; background: #2563eb; color: white; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8Z"/><path d="M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7"/><path d="m2.1 21.8 6.4-6.3"/><path d="m19 5-7 7"/></svg>
+          </div>
+          <div style="font-size: 1.25rem; font-weight: 900; color: #020617; letter-spacing: -0.025em;">PICT Canteen</div>
+          <div style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-top: 0.25rem;">100% Pure Vegetarian Campus Kitchen</div>
+          <div style="margin-top: 1.5rem; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.375rem 0.875rem; border-radius: 9999px; background: #f1f5f9; color: #334155; font-size: 0.75rem; font-weight: 800;">
+            <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #2563eb; display: inline-block;"></span>
+            <span>Loading canteen...</span>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
