@@ -8,7 +8,8 @@ export interface MenuItem {
   is_available: boolean;
   is_express?: boolean;
   description?: string;
-  isTest?: boolean;
+  catchy_line?: string;
+  nutrition_benefit?: string;
 }
 
 export interface OrderItem {
@@ -17,7 +18,6 @@ export interface OrderItem {
   price: number;
   quantity: number;
   is_express?: boolean;
-  isTest?: boolean;
 }
 
 export interface Order {
@@ -28,10 +28,7 @@ export interface Order {
   total_amount: number;
   status: OrderStatus;
   created_at: number | { toMillis?: () => number };
-  payment_status: 'Verified' | 'Pay at Counter' | 'Pending' | 'Unverified';
+  payment_status: 'Pay at Counter' | 'Verified' | 'Pending' | 'Unverified';
   payment_method?: string;
   scheduled_for?: string | null;
-  utr_number?: string;
-  razorpay_payment_id?: string | null;
-  geo_verified?: boolean;
 }

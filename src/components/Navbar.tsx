@@ -2,14 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut, type User } from 'firebase/auth';
 import { auth } from '../firebase';
-import {
-  UtensilsCrossed,
-  UserCircle,
-  LogOut,
-  Menu,
-  X,
-  BellRing,
-} from 'lucide-react';
+import { BellRing, LogOut, Menu, UtensilsCrossed, UserRound, X } from 'lucide-react';
 import type { Order } from '../types';
 
 interface NavbarProps {
@@ -19,103 +12,65 @@ interface NavbarProps {
 }
 
 export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: NavbarProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const readyOrder = activeOrders.find((order) => order.status === 'READY');
+  const currentOrder = readyOrder || activeOrders[0];
 
-  const readyOrder = activeOrders.find(o => o.status === 'READY');
-  const preparingOrder = activeOrders.find(o => o.status === 'PREPARING' || o.status === 'Pending');
+  const linkClass = (path: string) => `inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition-colors ${
+    location.pathname === path ? 'bg-blue-50 text-blue-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+  }`;
+
+  const closeMenu = () => setMenuOpen(false);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-slate-200/80">
-      <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-        
-        {/* Brand Logo */}
-        <Link to="/" className="flex items-center gap-3 group google-touch">
-          <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 via-indigo-600 to-indigo-700 text-white rounded-2xl flex items-center justify-center font-black text-xl shadow-md shadow-indigo-500/25 group-hover:scale-105 group-active:scale-95 transition-all">
-            <UtensilsCrossed size={20} />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-base font-black tracking-tight text-slate-900 leading-none group-hover:text-blue-600 transition-colors">
-              PICT CANTEEN
-            </span>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-              Campus Food Portal
-            </span>
-          </div>
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
+        <Link to="/" onClick={closeMenu} className="flex min-w-0 items-center gap-3 rounded-xl text-slate-900">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-blue-50 text-blue-700"><UtensilsCrossed size={19} /></span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold tracking-tight">PICT Canteen</span>
+            <span className="block truncate text-[11px] text-slate-500">Campus food, ready when you are</span>
+          </span>
         </Link>
 
-        {/* Center: Live Token Status Pill */}
-        {activeOrders.length > 0 && onOpenOrdersModal && (
-          <button
-            onClick={onOpenOrdersModal}
-            className={`hidden sm:flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm google-touch cursor-pointer ${
-              readyOrder
-                ? 'bg-emerald-500 text-white shadow-emerald-500/30 animate-bounce'
-                : 'bg-indigo-50 text-indigo-700 border border-indigo-200/80 hover:bg-indigo-100'
-            }`}
-          >
-            {readyOrder ? (
-              <>
-                <BellRing size={14} />
-                <span>Token {readyOrder.token_number} is Ready!</span>
-              </>
-            ) : (
-              <>
-                <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-                <span>Token {preparingOrder?.token_number || activeOrders[0].token_number} Cooking</span>
-              </>
-            )}
+        {currentOrder && onOpenOrdersModal && (
+          <button onClick={onOpenOrdersModal} className={`hidden items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold sm:flex ${readyOrder ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
+            {readyOrder ? <BellRing size={15} /> : <span className="h-2 w-2 rounded-full bg-blue-600" />}
+            {readyOrder ? `Token ${readyOrder.token_number} is ready` : `Token ${currentOrder.token_number} in progress`}
           </button>
         )}
 
-        {/* Right side Mobile Menu Toggle */}
-        <div className="flex items-center gap-2">
-          <button
-            className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-full google-touch transition-colors cursor-pointer"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            aria-label="Toggle navigation menu"
-          >
-            {isMenuOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
+        <button type="button" onClick={() => setMenuOpen((value) => !value)} aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={menuOpen} className="grid h-10 w-10 place-items-center rounded-full text-slate-700 hover:bg-slate-100 md:hidden">
+          {menuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
 
-        {/* Navigation Items */}
-        <nav className={`${isMenuOpen ? 'flex' : 'hidden'} md:flex flex-col md:flex-row absolute md:relative top-16 md:top-0 left-0 w-full md:w-auto bg-white md:bg-transparent shadow-xl md:shadow-none p-4 md:p-0 gap-2 md:gap-3 md:items-center z-40 border-b md:border-b-0 border-slate-100`}>
-          <Link
-            to="/"
-            onClick={() => setIsMenuOpen(false)}
-            className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 google-touch google-ripple ${
-              location.pathname === '/'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <UtensilsCrossed size={14} /> Menu
-          </Link>
-
-          {user && (
-            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-2.5 md:border-l md:border-slate-200 md:pl-2.5 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100">
-              <Link
-                to="/profile"
-                onClick={() => setIsMenuOpen(false)}
-                className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 google-touch google-ripple ${
-                  location.pathname === '/profile'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
-                }`}
-              >
-                <UserCircle size={15} /> Settings
-              </Link>
-              <button
-                onClick={() => { signOut(auth); setIsMenuOpen(false); }}
-                className="px-3.5 py-2 rounded-full text-xs font-bold text-rose-600 hover:bg-rose-50 transition-all flex items-center gap-1.5 text-left google-touch cursor-pointer"
-              >
-                <LogOut size={15} /> Logout
-              </button>
-            </div>
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Main navigation">
+          <Link to="/" className={linkClass('/')}>Menu</Link>
+          {user ? (
+            <>
+              <Link to="/profile" className={linkClass('/profile')}><UserRound size={16} /> Account</Link>
+              <button onClick={() => void signOut(auth)} className="inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"><LogOut size={16} /> Sign out</button>
+            </>
+          ) : (
+            <Link to="/login" className="ml-1 inline-flex min-h-10 items-center gap-2 rounded-full bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800"><UserRound size={16} /> Sign in</Link>
           )}
         </nav>
       </div>
+
+      {menuOpen && (
+        <nav className="absolute left-0 right-0 top-16 border-b border-slate-200 bg-white p-3 shadow-lg md:hidden" aria-label="Mobile navigation">
+          <Link to="/" onClick={closeMenu} className={`${linkClass('/')} w-full justify-start`}>Menu</Link>
+          {user ? (
+            <>
+              <Link to="/profile" onClick={closeMenu} className={`${linkClass('/profile')} w-full justify-start`}><UserRound size={16} /> Account</Link>
+              <button onClick={() => { void signOut(auth); closeMenu(); }} className="flex min-h-10 w-full items-center gap-2 rounded-full px-4 text-sm font-medium text-slate-600 hover:bg-slate-100"><LogOut size={16} /> Sign out</button>
+            </>
+          ) : (
+            <Link to="/login" onClick={closeMenu} className="mt-1 flex min-h-11 items-center justify-center gap-2 rounded-full bg-blue-700 px-4 text-sm font-semibold text-white"><UserRound size={16} /> Sign in</Link>
+          )}
+        </nav>
+      )}
     </header>
   );
 }

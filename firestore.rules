@@ -1,25 +1,130 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Bootstrap admins by verified email (rules only — not in the Vite client).
-    function isBootstrapAdminEmail() {
-      return request.auth.token.email_verified == true &&
-        request.auth.token.email in [
-          'canteen-staff@gmail.com',
-          'varadmalpure@gmail.com'
-        ];
+    function signedIn() {
+      return request.auth != null;
     }
 
     function isAdmin() {
-      return request.auth != null && (
-        request.auth.token.admin == true ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        isBootstrapAdminEmail()
+      return signedIn() && (
+        ('admin' in request.auth.token && request.auth.token.admin == true)
+        || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
 
     function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
+      return signedIn()
+        && request.auth.uid == userId
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function validMenuLine(item) {
+      let menuPath = /databases/$(database)/documents/menuItems/$(item.itemId);
+      let menuData = get(menuPath).data;
+      return item is map
+        && item.keys().hasAll(['itemId', 'name', 'price', 'quantity', 'is_express'])
+        && item.keys().hasOnly(['itemId', 'name', 'price', 'quantity', 'is_express'])
+        && item.itemId is string
+        && item.itemId.size() > 0
+        && item.name is string
+        && item.price is number
+        && item.price > 0
+        && item.quantity is int
+        && item.quantity > 0
+        && item.quantity <= 20
+        && exists(menuPath)
+        && menuData.is_available == true
+        && menuData.price is number
+        && menuData.price > 0
+        && (!('isTest' in menuData) || menuData.isTest != true)
+        && item.name == menuData.name
+        && item.price == menuData.price
+        && item.is_express == (('is_express' in menuData) && menuData.is_express == true);
+    }
+
+    function lineAmount(items, index) {
+      return items.size() > index
+        ? items[index].price * items[index].quantity
+        : 0;
+    }
+
+    function orderTotal(items) {
+      return lineAmount(items, 0)
+        + lineAmount(items, 1)
+        + lineAmount(items, 2)
+        + lineAmount(items, 3)
+        + lineAmount(items, 4)
+        + lineAmount(items, 5);
+    }
+
+    function validOrderLines(items) {
+      return items is list
+        && items.size() > 0
+        && items.size() <= 6
+        && validMenuLine(items[0])
+        && (items.size() < 2 || validMenuLine(items[1]))
+        && (items.size() < 3 || validMenuLine(items[2]))
+        && (items.size() < 4 || validMenuLine(items[3]))
+        && (items.size() < 5 || validMenuLine(items[4]))
+        && (items.size() < 6 || validMenuLine(items[5]))
+        && (items.size() < 2 || items[0].itemId != items[1].itemId)
+        && (items.size() < 3 || (items[0].itemId != items[2].itemId && items[1].itemId != items[2].itemId))
+        && (items.size() < 4 || (items[0].itemId != items[3].itemId && items[1].itemId != items[3].itemId && items[2].itemId != items[3].itemId))
+        && (items.size() < 5 || (items[0].itemId != items[4].itemId && items[1].itemId != items[4].itemId && items[2].itemId != items[4].itemId && items[3].itemId != items[4].itemId))
+        && (items.size() < 6 || (items[0].itemId != items[5].itemId && items[1].itemId != items[5].itemId && items[2].itemId != items[5].itemId && items[3].itemId != items[5].itemId && items[4].itemId != items[5].itemId));
+    }
+
+    function validPickupSlot(value) {
+      return value == null
+        || (value is string && value.matches('^(09|1[0-7]):(00|15|30|45)$'));
+    }
+
+    function canPlaceOrder(userId) {
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      return exists(userPath)
+        && get(userPath).data.verificationStatus != 'rejected'
+        && (!('lastOrderAt' in get(userPath).data)
+          || get(userPath).data.lastOrderAt + duration.value(15, 's') <= request.time);
+    }
+
+    function validOrderMarker(userId) {
+      let orderId = request.resource.data.lastOrderId;
+      let orderPath = /databases/$(database)/documents/orders/$(orderId);
+      return request.resource.data.lastOrderAt == request.time
+        && request.resource.data.lastOrderId is string
+        && getAfter(orderPath).data.uid == userId
+        && getAfter(orderPath).data.created_at == request.time;
+    }
+
+    function orderMatchesPostWriteMarker(userId, orderId) {
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      return getAfter(userPath).data.lastOrderId == orderId
+        && getAfter(userPath).data.lastOrderAt == request.time;
+    }
+
+    function validInitialBoardEntry(orderId) {
+      let boardPath = /databases/$(database)/documents/displayBoard/$(orderId);
+      return getAfter(boardPath).data.token_number == request.resource.data.token_number
+        && getAfter(boardPath).data.status == 'Pending'
+        && getAfter(boardPath).data.updated_at == request.time;
+    }
+
+    function validStatusChange(oldStatus, newStatus) {
+      return (oldStatus == 'Pending' && newStatus in ['PREPARING', 'CANCELLED'])
+        || (oldStatus == 'PREPARING' && newStatus in ['READY', 'CANCELLED'])
+        || (oldStatus == 'READY' && newStatus in ['COMPLETED', 'CANCELLED']);
+    }
+
+    function boardMatchesOrder(orderId) {
+      let boardPath = /databases/$(database)/documents/displayBoard/$(orderId);
+      return existsAfter(boardPath)
+        && getAfter(boardPath).data.token_number == request.resource.data.token_number
+        && getAfter(boardPath).data.status == request.resource.data.status
+        && getAfter(boardPath).data.updated_at == request.time;
+    }
+
+    function orderIsTerminalAfter(orderId) {
+      return getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status in ['COMPLETED', 'CANCELLED'];
     }
 
     match /admins/{adminId} {
@@ -31,57 +136,110 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
 
       allow create: if isOwner(userId)
+        && request.resource.data.keys().hasAll(['uid', 'email', 'name', 'verificationStatus', 'created_at'])
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'name', 'verificationStatus', 'created_at'])
         && request.resource.data.uid == userId
-        && request.resource.data.verificationStatus == 'pending';
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.verificationStatus == 'pending'
+        && request.resource.data.created_at == request.time;
 
       allow update: if isAdmin() || (
         isOwner(userId)
-        && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['verificationStatus', 'uid', 'email', 'lastOrderAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasAll(['lastOrderAt', 'lastOrderId'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastOrderAt', 'lastOrderId'])
+        && validOrderMarker(userId)
       );
     }
 
-    match /menuItems/{item} {
-      allow read: if true;
-      allow write: if isAdmin();
+    match /menuItems/{itemId} {
+      allow get: if true;
+      allow list: if request.query.limit <= 200;
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
-    match /metadata/{doc} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
-
-    match /orders/{orderId} {
-      allow create: if false;
-      allow read: if request.auth != null && (
-        resource.data.uid == request.auth.uid || isAdmin()
-      );
-      allow update, delete: if isAdmin();
-    }
-
-    // Public Live TV — token + status only (Cloud Functions write the stripped shape)
-    match /displayBoard/{orderId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /paymentIntents/{intentId} {
-      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
-      allow write: if false;
-    }
-
-    match /usedUTRs/{utr} {
+    match /metadata/{docId} {
       allow read, write: if false;
     }
 
-    match /pnrs/{pnr} {
-      allow read: if isAdmin() || (
-        request.auth != null && resource.data.uid == request.auth.uid
-      );
-      allow create: if request.auth != null
-        && request.resource.data.uid == request.auth.uid
-        && !exists(/databases/$(database)/documents/pnrs/$(pnr));
-      allow update, delete: if isAdmin();
+    match /orders/{orderId} {
+      allow create: if isOwner(request.resource.data.uid)
+        && orderId.size() == 20
+        && request.resource.data.keys().hasAll([
+          'uid', 'token_number', 'items', 'total_amount', 'status', 'created_at',
+          'payment_status', 'payment_method', 'scheduled_for'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'uid', 'token_number', 'items', 'total_amount', 'status', 'created_at',
+          'payment_status', 'payment_method', 'scheduled_for'
+        ])
+        && request.resource.data.token_number == 'A-' + orderId.substring(0, 6)
+        && request.resource.data.status == 'Pending'
+        && request.resource.data.created_at == request.time
+        && request.resource.data.payment_status == 'Pay at Counter'
+        && request.resource.data.payment_method == 'Pay at Counter'
+        && validPickupSlot(request.resource.data.scheduled_for)
+        && validOrderLines(request.resource.data.items)
+        && request.resource.data.total_amount is number
+        && request.resource.data.total_amount > 0
+        && request.resource.data.total_amount == orderTotal(request.resource.data.items)
+        && canPlaceOrder(request.auth.uid)
+        && orderMatchesPostWriteMarker(request.auth.uid, orderId)
+        && validInitialBoardEntry(orderId);
+
+      allow get: if isOwner(resource.data.uid) || isAdmin();
+
+      allow list: if request.query.limit <= 100
+        && (isOwner(resource.data.uid) || isAdmin());
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && validStatusChange(resource.data.status, request.resource.data.status)
+        && ((request.resource.data.status in ['COMPLETED', 'CANCELLED'] && !existsAfter(
+          /databases/$(database)/documents/displayBoard/$(orderId)
+        )) || (request.resource.data.status in ['PREPARING', 'READY'] && boardMatchesOrder(orderId)));
+
+      allow delete: if false;
+    }
+
+    match /displayBoard/{orderId} {
+      allow get: if true;
+      allow list: if request.query.limit <= 100;
+
+      allow create: if isOwner(getAfter(
+          /databases/$(database)/documents/orders/$(orderId)
+        ).data.uid)
+        && request.resource.data.keys().hasAll(['token_number', 'status', 'updated_at'])
+        && request.resource.data.keys().hasOnly(['token_number', 'status', 'updated_at'])
+        && request.resource.data.status == 'Pending'
+        && request.resource.data.token_number == getAfter(
+          /databases/$(database)/documents/orders/$(orderId)
+        ).data.token_number
+        && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status == 'Pending'
+        && request.resource.data.updated_at == request.time;
+
+      allow update: if isAdmin()
+        && request.resource.data.keys().hasAll(['token_number', 'status', 'updated_at'])
+        && request.resource.data.keys().hasOnly(['token_number', 'status', 'updated_at'])
+        && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status == request.resource.data.status
+        && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.token_number == request.resource.data.token_number
+        && request.resource.data.updated_at == request.time;
+
+      allow delete: if isAdmin() && orderIsTerminalAfter(orderId);
+    }
+
+    match /paymentIntents/{intentId} {
+      allow read: if isOwner(resource.data.uid);
+      allow write: if false;
+    }
+
+    match /usedUTRs/{utrId} {
+      allow read, write: if false;
+    }
+
+    match /pnrs/{pnrId} {
+      allow read: if isAdmin() || (isOwner(resource.data.uid));
+      allow create, update, delete: if isAdmin();
     }
   }
 }

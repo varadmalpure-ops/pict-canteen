@@ -1,240 +1,123 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { auth, db } from '../firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword } from 'firebase/auth';
-import { Loader2, Camera, User, Lock, CheckCircle2, Clock, ShieldCheck, ChefHat, Tv } from 'lucide-react';
-import { uploadUserImage, getUserImageUrl } from '../lib/userPhotos';
+import { Loader2, UserRound, LockKeyhole, CheckCircle2, Clock3, ShieldCheck, ChefHat, Tv } from 'lucide-react';
 
 interface UserProfile {
   uid: string;
   email: string;
-  pnr: string;
-  dob: string;
-  idPhotoPath?: string;
-  selfiePath?: string;
+  name?: string;
   verificationStatus: 'pending' | 'verified' | 'rejected';
   created_at: unknown;
-  lastOrderAt?: unknown;
 }
 
 export default function StudentProfile() {
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     const fetchProfile = async () => {
-      if (!auth.currentUser) return;
-      try {
-        const docRef = doc(db, 'users', auth.currentUser.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data() as UserProfile;
-          setProfileData(data);
-          const path = data.idPhotoPath || data.selfiePath;
-          if (path) {
-            try {
-              setPhotoUrl(await getUserImageUrl(path));
-            } catch {
-              setPhotoUrl(null);
-            }
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
         setLoading(false);
+        return;
+      }
+      try {
+        const snapshot = await getDoc(doc(db, 'users', currentUser.uid));
+        if (!cancelled && snapshot.exists()) setProfileData(snapshot.data() as UserProfile);
+      } catch (e) {
+        console.error('Profile load failed:', e);
+        if (!cancelled) setError('Your account details could not be loaded. Check your connection and try again.');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
-    fetchProfile();
+    void fetchProfile();
+    return () => { cancelled = true; };
   }, []);
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !auth.currentUser) return;
-
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Image must be smaller than 2MB');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const dataUrl = event.target?.result as string;
-      try {
-        const path = await uploadUserImage(auth.currentUser!.uid, 'avatar.jpg', dataUrl);
-        await updateDoc(doc(db, 'users', auth.currentUser!.uid), { idPhotoPath: path });
-        setPhotoUrl(await getUserImageUrl(path));
-        setProfileData((prev: any) => ({ ...prev, idPhotoPath: path }));
-        alert('Profile photo updated successfully!');
-      } catch (err) {
-        console.error(err);
-        alert('Failed to update photo');
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPassword || !auth.currentUser) return;
+  const handleChangePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const currentUser = auth.currentUser;
+    if (!newPassword || !currentUser) return;
+    setError('');
+    setPasswordMessage('');
     try {
-      await updatePassword(auth.currentUser, newPassword);
-      setPasswordMessage('Password changed successfully!');
+      await updatePassword(currentUser, newPassword);
+      setPasswordMessage('Password updated.');
       setNewPassword('');
-      setTimeout(() => setPasswordMessage(''), 3000);
     } catch (err: any) {
-      console.error(err);
       if (err.code === 'auth/requires-recent-login') {
-        alert('Please log out and log back in to change your password.');
+        setError('Sign out and sign in again before changing your password.');
       } else {
-        alert('Failed to change password. ' + err.message);
+        setError(err.message || 'Password could not be changed.');
       }
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
-        <Loader2 className="animate-spin text-blue-600" size={32} />
-      </div>
-    );
+    return <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center"><Loader2 className="animate-spin text-blue-700" size={28} /></div>;
   }
 
   if (!profileData) {
-    return (
-      <div className="text-center p-12 text-slate-600 font-semibold">
-        Profile not found.
-      </div>
-    );
+    return <div className="mx-auto max-w-xl p-8 text-center text-sm text-slate-600">{error || 'Account details are not available.'}</div>;
   }
 
   const verified = profileData.verificationStatus === 'verified';
 
   return (
-    <div className="max-w-2xl mx-auto p-4 md:p-8 pb-32">
-      <div className="mb-6">
-        <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-          Settings & Profile
-        </h2>
-        <p className="text-xs text-slate-500 font-medium mt-1">
-          Manage your account and canteen preferences
-        </p>
+    <div className="mx-auto max-w-2xl space-y-4 px-4 py-6 pb-28">
+      <div className="mb-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Account</h1>
+        <p className="mt-1 text-sm text-slate-500">Your sign-in and canteen account details.</p>
       </div>
 
-      {/* 1. Profile Information Card */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 mb-6">
-        <div className="flex flex-col md:flex-row items-center gap-6 pb-6 border-b border-slate-100">
-          <div className="relative group">
-            {photoUrl ? (
-              <img src={photoUrl} alt="Profile" className="w-28 h-28 rounded-full object-cover shadow-md border-4 border-white" />
-            ) : (
-              <div className="w-28 h-28 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center border-4 border-white shadow-md">
-                <User size={42} />
-              </div>
-            )}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute bottom-0 right-0 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full shadow-lg google-touch google-ripple transition-transform cursor-pointer"
-              title="Upload photo"
-              aria-label="Upload photo"
-            >
-              <Camera size={16} />
-            </button>
-            <input type="file" accept="image/*" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" />
-          </div>
+      {error && <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
 
-          <div className="text-center md:text-left flex-1 min-w-0">
-            <h3 className="text-xl sm:text-2xl font-black text-slate-900 break-all">
-              {profileData.email}
-            </h3>
-            <div className="text-slate-500 font-semibold text-xs mt-1">
-              PNR: <span className="font-mono text-slate-800">{profileData.pnr}</span>
-            </div>
-            <div className="text-slate-500 text-xs mt-0.5">
-              DOB: {profileData.dob}
-            </div>
-            {verified ? (
-              <div className="inline-flex items-center gap-1 mt-3 bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-3 py-1 rounded-full text-xs font-bold">
-                <CheckCircle2 size={14} /> Verified Student
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-1 mt-3 bg-amber-50 text-amber-800 border border-amber-200/60 px-3 py-1 rounded-full text-xs font-bold">
-                <Clock size={14} /> Pending staff review
-              </div>
-            )}
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6">
+        <div className="flex items-center gap-4">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-700"><UserRound size={25} /></div>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-base font-semibold text-slate-900">{profileData.name || 'PICT Canteen student'}</h2>
+            <p className="truncate text-sm text-slate-500">{profileData.email}</p>
           </div>
         </div>
-      </div>
-
-      {/* 2. Password & Security Card */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 mb-6">
-        <h4 className="text-base font-black text-slate-900 mb-4 flex items-center gap-2">
-          <Lock size={18} className="text-blue-600" />
-          <span>Security & Password</span>
-        </h4>
-        <form onSubmit={handleChangePassword} className="max-w-md space-y-3">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Change Account Password
-            </label>
-            <input
-              type="password"
-              required
-              value={newPassword}
-              onChange={e => setNewPassword(e.target.value)}
-              placeholder="Enter new strong password"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none transition-all placeholder:text-slate-400"
-            />
-          </div>
-          <button
-            type="submit"
-            className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-xs shadow-sm google-touch google-ripple transition-all cursor-pointer"
-          >
-            Update Password
-          </button>
-          {passwordMessage && (
-            <div className="text-emerald-600 text-xs font-bold mt-2">
-              {passwordMessage}
-            </div>
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          {verified ? (
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800"><CheckCircle2 size={16} /> Student account verified</div>
+          ) : profileData.verificationStatus === 'rejected' ? (
+            <div className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-800">Account access needs staff review</div>
+          ) : (
+            <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900"><Clock3 size={16} /> Account pending staff review</div>
           )}
-        </form>
-      </div>
+        </div>
+      </section>
 
-      {/* 3. Staff Portal Section */}
-      <div className="bg-slate-100/70 rounded-3xl p-6 border border-slate-200/60">
-        <div className="flex items-center gap-2 text-slate-700 font-bold text-xs mb-3">
-          <ShieldCheck size={16} className="text-blue-600" />
-          <span>Canteen Staff & Kitchen Access</span>
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900"><LockKeyhole size={18} className="text-blue-700" /> Change password</h2>
+        <p className="mt-1 text-sm text-slate-500">Use at least six characters for your new password.</p>
+        <form onSubmit={handleChangePassword} className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <input type="password" required minLength={6} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="New password" className="min-h-12 flex-1 rounded-2xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
+          <button type="submit" className="min-h-12 rounded-full bg-slate-900 px-5 text-sm font-semibold text-white hover:bg-slate-800">Update password</button>
+        </form>
+        {passwordMessage && <p role="status" className="mt-3 text-sm text-emerald-700">{passwordMessage}</p>}
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6">
+        <h2 className="text-base font-semibold text-slate-900">Canteen staff</h2>
+        <p className="mt-1 text-sm text-slate-500">Staff sign in with their authorized account.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link to="/admin" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"><ShieldCheck size={15} /> Manager</Link>
+          <Link to="/kitchen" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"><ChefHat size={15} /> Kitchen</Link>
+          <Link to="/live" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"><Tv size={15} /> Live board</Link>
         </div>
-        <p className="text-[11px] text-slate-500 mb-3">
-          Authorized staff can access kitchen and order management portals directly.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            to="/admin"
-            className="px-3.5 py-1.5 bg-white hover:bg-blue-50 text-slate-700 rounded-full border border-slate-200/80 font-bold text-xs flex items-center gap-1.5 google-touch transition-all shadow-2xs"
-          >
-            <ShieldCheck size={13} className="text-blue-600" /> Manager Portal
-          </Link>
-          <Link
-            to="/kitchen"
-            className="px-3.5 py-1.5 bg-white hover:bg-blue-50 text-slate-700 rounded-full border border-slate-200/80 font-bold text-xs flex items-center gap-1.5 google-touch transition-all shadow-2xs"
-          >
-            <ChefHat size={13} className="text-amber-500" /> Kitchen KDS
-          </Link>
-          <Link
-            to="/live"
-            className="px-3.5 py-1.5 bg-white hover:bg-blue-50 text-slate-700 rounded-full border border-slate-200/80 font-bold text-xs flex items-center gap-1.5 google-touch transition-all shadow-2xs"
-          >
-            <Tv size={13} className="text-indigo-500" /> Live TV
-          </Link>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

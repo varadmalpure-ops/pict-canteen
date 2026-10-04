@@ -1,6 +1,5 @@
 import { menuItemsCollection } from './firebase';
-import { addDoc, getDocs, doc, deleteDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { addDoc, getDocs, limit, query } from 'firebase/firestore';
 import type { MenuItem } from './types';
 
 // Mock data reflecting a realistic engineering college canteen menu in Pune
@@ -78,28 +77,17 @@ export async function initializeDatabase() {
 
   console.log('Initializing database...');
   try {
-    const snapshot = await getDocs(menuItemsCollection);
+    const snapshot = await getDocs(query(menuItemsCollection, limit(200)));
     if (!snapshot.empty) {
-      console.log('Clearing old menu items...');
-      const deletePromises = snapshot.docs.map(docSnap => deleteDoc(docSnap.ref));
-      await Promise.all(deletePromises);
+      console.log('Menu already has items; leaving the existing inventory untouched.');
+      return;
     }
 
-    // 2. Add new mock data using Firebase v9 modular SDK
     const addPromises = mockMenuItems.map(item => 
       addDoc(menuItemsCollection, item)
     );
     await Promise.all(addPromises);
-
-    // Remove legacy free test item if present
-    try {
-      await deleteDoc(doc(db, 'menuItems', 'test-trial-item'));
-    } catch {
-      /* ignore */
-    }
-
-    // Token counter is owned by Cloud Functions (clients cannot write metadata/).
-    console.log('Database initialized successfully with mock menu items!');
+    console.log('Menu initialized with sample canteen items.');
   } catch (error) {
     console.error('Error initializing database:', error);
   } finally {

@@ -1,14 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
-import { onSnapshot, query, where, getDocs, documentId, limit, getCountFromServer } from 'firebase/firestore';
+import { onSnapshot, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
 import {
   menuItemsCollection,
   ordersCollection,
   displayBoardCollection,
-  auth,
-  placeOrderFn,
-  getPaymentConfigFn,
-  createPaymentOrderFn,
 } from '../firebase';
+import { createStudentOrder } from '../lib/orderService';
 import type { MenuItem, OrderItem, Order } from '../types';
 import {
   ShoppingCart,
@@ -21,128 +18,51 @@ import {
 } from 'lucide-react';
 import DishCard from './DishCard';
 import RushMeter from './RushMeter';
-import OrderTrackerModal from './OrderTrackerModal';
-import { formatTime12h } from '../lib/timeUtils';
+import StudentAuth from './StudentAuth';
+import type { User } from 'firebase/auth';
 
 const CartReviewView = lazy(() => import('./CartReviewView'));
 
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
-  }
-}
-
-type PaymentProvider = 'razorpay' | 'pay_at_counter';
-
-function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (window.Razorpay) {
-      resolve(true);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
-
 type StudentViewProps = {
-  sharedActiveOrders?: Order[];
-  onOpenOrdersModal?: () => void;
+  user: User | null;
+  userRecordReady: boolean;
+  sharedActiveOrders: Order[];
+  onOrderPlaced: (order: Order) => void;
+  onOrderRejected: (orderId: string) => void;
 };
 
-function cacheWrite(key: string, value: unknown) {
-  try {
-    // Defer large JSON writes off the critical path
-    const payload = JSON.stringify(value);
-    queueMicrotask(() => {
-      try { localStorage.setItem(key, payload); } catch { /* quota */ }
-    });
-  } catch { /* ignore */ }
-}
-
-export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: StudentViewProps = {}) {
-  // Instant cache-first menu initialization for 0ms visual render
-  const [menu, setMenu] = useState<MenuItem[]>(() => {
-    try {
-      const cached = localStorage.getItem('pict_canteen_menu_cache');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
+export default function StudentView({ user, userRecordReady, sharedActiveOrders, onOrderPlaced, onOrderRejected }: StudentViewProps) {
+  const [menu, setMenu] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<OrderItem[]>([]);
-  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
-  const [lastOrder, setLastOrder] = useState<Order | null>(() => {
-    try {
-      const cached = localStorage.getItem('pict_last_order_cache');
-      return cached ? JSON.parse(cached) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [queueCount, setQueueCount] = useState<number | null>(() => {
-    try {
-      const cached = localStorage.getItem('pict_canteen_queue_cache');
-      return cached !== null ? JSON.parse(cached) : null;
-    } catch {
-      return null;
-    }
-  });
+  const activeOrders = sharedActiveOrders;
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [lastOrderEntry, setLastOrderEntry] = useState<{ uid: string; order: Order } | null>(null);
+  const lastOrder = lastOrderEntry?.uid === user?.uid ? lastOrderEntry?.order ?? null : null;
+  const [queueCount, setQueueCount] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
-  const [activeOrderIds, setActiveOrderIds] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem('activeOrderIds');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('activeOrderIds', JSON.stringify(activeOrderIds));
-  }, [activeOrderIds]);
-
-  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-  const [loading, setLoading] = useState<boolean>(() => {
-    try {
-      const cached = localStorage.getItem('pict_canteen_menu_cache');
-      return !cached || JSON.parse(cached).length === 0;
-    } catch {
-      return true;
-    }
-  });
-  const [recommendations, setRecommendations] = useState<MenuItem[]>(() => {
-    try {
-      const cached = localStorage.getItem('pict_recommendations_cache');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [recommendationEntry, setRecommendationEntry] = useState<{ uid: string; items: MenuItem[] } | null>(null);
+  const recommendations = recommendationEntry?.uid === user?.uid ? recommendationEntry?.items ?? [] : [];
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [scheduledFor, setScheduledFor] = useState<string>('now');
   const [customTime, setCustomTime] = useState<string>('');
-  const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>('pay_at_counter');
-  const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(null);
   const [orderNotice, setOrderNotice] = useState<string | null>(null);
-  const paymentConfigLoaded = useRef(false);
+  const currentUidRef = useRef(user?.uid ?? null);
+  currentUidRef.current = user?.uid ?? null;
 
-  // Geolocation only when needed at checkout (avoid competing with first paint)
-  // Menu: live snapshot for availability, but UI paints instantly from cache
+  // Firestore's persistent cache is the single source for hydration; stale
+  // localStorage menu snapshots caused a visible correction after refresh.
   useEffect(() => {
-    const unsubscribeMenu = onSnapshot(menuItemsCollection, (snapshot) => {
+    const unsubscribeMenu = onSnapshot(query(menuItemsCollection, limit(200)), (snapshot) => {
       const items = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() } as MenuItem))
-        .filter(i => Number(i.price) >= 0);
+        .map(d => {
+          const data = d.data();
+          return { id: d.id, ...data, price: Number(data.price) } as MenuItem;
+        })
+        .filter(i => Number.isFinite(i.price) && i.price > 0 && typeof i.name === 'string' && typeof i.category === 'string');
 
       items.sort((a, b) => {
         const catA = (a.category || '').toLowerCase();
@@ -152,24 +72,68 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
         return (a.name || '').localeCompare(b.name || '');
       });
       setMenu(items);
+      setCart(prevCart => prevCart.flatMap(cartItem => {
+        const found = items.find(m => m.id === cartItem.itemId);
+        if (!found || !found.is_available) return [];
+        return [{ ...cartItem, name: found.name, price: found.price, is_express: found.is_express }];
+      }));
       setLoading(false);
-      cacheWrite('pict_canteen_menu_cache', items);
     }, () => setLoading(false));
 
     return () => unsubscribeMenu();
   }, []);
 
-  const pastOrdersLoadedRef = useRef(false);
+  const lastLoadedUidRef = useRef<string | null>(null);
 
-  // Defer past-order / recs work until after first paint
+  // Keep the cart across sign-in, then continue when the Spark profile document is ready.
   useEffect(() => {
-    if (!auth.currentUser || auth.currentUser.isAnonymous || menu.length === 0 || pastOrdersLoadedRef.current) return;
-    pastOrdersLoadedRef.current = true;
+    if (user && userRecordReady && isAuthModalOpen) {
+      setIsAuthModalOpen(false);
+      if (cart.length > 0) {
+        setIsPaymentModalOpen(true);
+      }
+    }
+  }, [user, userRecordReady, isAuthModalOpen, cart.length]);
 
-    const run = () => {
-      (async () => {
+  const previouslyReadyRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!user) {
+      previouslyReadyRef.current.clear();
+      return;
+    }
+    for (const order of activeOrders) {
+      if (order.status !== 'READY' || previouslyReadyRef.current.has(order.id)) continue;
+      previouslyReadyRef.current.add(order.id);
+      try {
+        const audio = new Audio('/notification.mp3');
+        audio.play().catch(() => {});
+      } catch {}
+      if ('vibrate' in navigator) {
+        try { navigator.vibrate([200, 100, 200]); } catch {}
+      }
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Your food is ready!', {
+          body: `Token ${order.token_number} is ready for pickup at the counter!`,
+          icon: '/pwa-192x192.png',
+        });
+      }
+    }
+  }, [activeOrders, user]);
+
+  // Load past orders & recommendations when user signs in or menu is ready
+  useEffect(() => {
+    if (!user) {
+      lastLoadedUidRef.current = null;
+      return;
+    }
+    if (menu.length === 0 || lastLoadedUidRef.current === user.uid) return;
+    const activeUid = user.uid;
+    lastLoadedUidRef.current = activeUid;
+
+    let cancelled = false;
+    void (async () => {
         try {
-          const pastOrdersQ = query(ordersCollection, where('uid', '==', auth.currentUser!.uid), limit(5));
+          const pastOrdersQ = query(ordersCollection, where('uid', '==', activeUid), orderBy('created_at', 'desc'), limit(5));
           const pastOrdersSnap = await getDocs(pastOrdersQ);
           const itemFreq: Record<string, number> = {};
           const pastList: Order[] = [];
@@ -183,8 +147,8 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
 
           const sortedIds = Object.keys(itemFreq).sort((a, b) => itemFreq[b] - itemFreq[a]).slice(0, 3);
           const recs = menu.filter(i => sortedIds.includes(i.id) && i.is_available);
-          setRecommendations(recs);
-          cacheWrite('pict_recommendations_cache', recs);
+          if (cancelled) return;
+          setRecommendationEntry({ uid: activeUid, items: recs });
 
           if (pastList.length > 0) {
             pastList.sort((a, b) => {
@@ -193,171 +157,34 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
               return timeB - timeA;
             });
             const latest = pastList[0];
-            setLastOrder(latest);
-            cacheWrite('pict_last_order_cache', {
-              id: latest.id,
-              token_number: latest.token_number,
-              total_amount: latest.total_amount,
-              items: latest.items,
+            const latestTime = typeof latest.created_at === 'number'
+              ? latest.created_at
+              : latest.created_at?.toMillis?.() || 0;
+            setLastOrderEntry((current) => {
+              if (current?.uid !== activeUid) return { uid: activeUid, order: latest };
+              const currentTime = typeof current.order.created_at === 'number'
+                ? current.order.created_at
+                : current.order.created_at?.toMillis?.() || 0;
+              return currentTime > latestTime ? current : { uid: activeUid, order: latest };
             });
+          } else {
+            setLastOrderEntry((current) => current?.uid === activeUid && typeof current.order.created_at === 'number' ? current : null);
           }
         } catch (e) {
           console.error('Past orders error:', e);
         }
       })();
-    };
+    return () => { cancelled = true; };
+  }, [menu, user]);
 
-    const idle = (window as any).requestIdleCallback as undefined | ((cb: () => void, opts?: { timeout: number }) => number);
-    if (idle) {
-      const id = idle(run, { timeout: 2500 });
-      return () => (window as any).cancelIdleCallback?.(id);
-    }
-    const t = window.setTimeout(run, 1200);
-    return () => clearTimeout(t);
-  }, [menu]);
-
-  // Rush meter: cheap count poll instead of a permanent live listener
+  // Keep the public rush count current from the same lightweight board used by the TV.
   useEffect(() => {
-    let cancelled = false;
-    const qQueue = query(displayBoardCollection, where('status', 'in', ['Pending', 'PREPARING']));
-
-    const refresh = async () => {
-      try {
-        const snap = await getCountFromServer(qQueue);
-        if (!cancelled) {
-          const count = snap.data().count;
-          setQueueCount(count);
-          cacheWrite('pict_canteen_queue_cache', count);
-        }
-      } catch {
-        /* ignore — keep cached value */
-      }
-    };
-
-    const start = window.setTimeout(() => {
-      refresh();
-    }, 800);
-    const interval = window.setInterval(refresh, 20_000);
-    return () => {
-      cancelled = true;
-      clearTimeout(start);
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Payment config only when opening checkout (avoids cold Cloud Function on every visit)
-  const fetchPaymentConfig = useCallback(async (force = false) => {
-    if (paymentConfigLoaded.current && !force) return;
-    try {
-      const res = await getPaymentConfigFn();
-      const data = res.data as { provider: PaymentProvider; razorpayKeyId: string | null };
-      if (data?.provider === 'razorpay' && data.razorpayKeyId) {
-        setPaymentProvider('razorpay');
-        setRazorpayKeyId(data.razorpayKeyId);
-        loadRazorpayScript();
-      } else {
-        setPaymentProvider('pay_at_counter');
-        setRazorpayKeyId(null);
-      }
-      paymentConfigLoaded.current = true;
-    } catch {
-      setPaymentProvider('pay_at_counter');
-      setRazorpayKeyId(null);
-    }
-  }, []);
-
-  // Prefer App-shared active orders when provided (avoids duplicate listeners)
-  useEffect(() => {
-    if (!sharedActiveOrders) return;
-    setActiveOrders(sharedActiveOrders);
-    setActiveOrderIds(sharedActiveOrders.map((o) => o.id));
-  }, [sharedActiveOrders]);
-
-  // Recover active orders only when App does not share them
-  useEffect(() => {
-    if (sharedActiveOrders || !auth.currentUser) return;
-    (async () => {
-      try {
-        const q = query(
-          ordersCollection,
-          where('uid', '==', auth.currentUser!.uid),
-          where('status', 'in', ['Pending', 'PREPARING', 'READY'])
-        );
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          const ids = snap.docs.map(d => d.id);
-          setActiveOrderIds(prev => Array.from(new Set([...prev, ...ids])));
-        }
-      } catch (err) {
-        console.error('Order recovery failed:', err);
-      }
-    })();
-  }, [sharedActiveOrders]);
-
-  // Sync active orders snapshot — skip when App already shares live orders
-  const activeOrderIdsRef = useRef(activeOrderIds);
-  activeOrderIdsRef.current = activeOrderIds;
-
-  const activeOrderIdsKey = activeOrderIds.slice(0, 10).sort().join(',');
-
-  useEffect(() => {
-    if (sharedActiveOrders) return;
-
-    const ids = activeOrderIdsRef.current;
-    if (ids.length === 0) {
-      setActiveOrders([]);
-      return;
-    }
-
-    const validIds = ids.slice(0, 10);
-    const q = query(ordersCollection, where(documentId(), 'in', validIds));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-      let changed = false;
-      const currentIds = activeOrderIdsRef.current;
-      const nextActiveIds = [...currentIds];
-
-      orders.forEach(orderData => {
-        if (orderData.status === 'COMPLETED' || orderData.status === 'CANCELLED') {
-          if (orderData.status === 'CANCELLED') {
-            setOrderNotice(`Order ${orderData.token_number} was cancelled. Collect any refund at the counter.`);
-          }
-          const idx = nextActiveIds.indexOf(orderData.id);
-          if (idx > -1) {
-            nextActiveIds.splice(idx, 1);
-            changed = true;
-          }
-        } else if (orderData.status === 'READY') {
-          const notifKey = `notified_${orderData.id}`;
-          if (!sessionStorage.getItem(notifKey)) {
-            sessionStorage.setItem(notifKey, 'true');
-            try {
-              const audio = new Audio('/notification.mp3');
-              audio.play().catch(() => {});
-            } catch {}
-            if ('vibrate' in navigator) {
-              try { navigator.vibrate([200, 100, 200]); } catch {}
-            }
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification('Your food is ready!', {
-                body: `Token ${orderData.token_number} is ready for pickup at the counter!`,
-                icon: '/pwa-192x192.png'
-              });
-            }
-          }
-        }
-      });
-
-      if (changed) {
-        setActiveOrderIds(nextActiveIds);
-        if (nextActiveIds.length === 0) setIsStatusModalOpen(false);
-      }
-      setActiveOrders(orders.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED'));
-    });
-
+    const qQueue = query(displayBoardCollection, where('status', 'in', ['Pending', 'PREPARING']), limit(100));
+    const unsubscribe = onSnapshot(qQueue, (snapshot) => {
+      setQueueCount(snapshot.size);
+    }, () => setQueueCount(null));
     return () => unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrderIdsKey, sharedActiveOrders]);
+  }, []);
 
   const repeatLastOrder = useCallback(() => {
     if (!lastOrder || !lastOrder.items || lastOrder.items.length === 0) return;
@@ -382,11 +209,19 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
   }, [lastOrder, menu]);
 
   const addToCart = useCallback((item: MenuItem) => {
-    if (item.price < 0) return;
+    if (item.price <= 0 || !item.is_available) return;
     setCart(prev => {
       const existing = prev.find(i => i.itemId === item.id);
       if (existing) {
+        if (existing.quantity >= 20) {
+          setOrderNotice('You can add up to 20 of the same dish.');
+          return prev;
+        }
         return prev.map(i => i.itemId === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+      }
+      if (prev.length >= 6) {
+        setOrderNotice('Keep an order to six different dishes or fewer.');
+        return prev;
       }
       return [...prev, { itemId: item.id, name: item.name, price: item.price, quantity: 1, is_express: item.is_express }];
     });
@@ -398,135 +233,45 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + (item.price * item.quantity), 0), [cart]);
   const totalCartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
-  const scheduleValue = scheduledFor === 'now' ? null : (scheduledFor === 'custom' ? (customTime ? formatTime12h(customTime) : null) : scheduledFor);
+  const scheduleValue = scheduledFor === 'now' ? null : customTime || null;
 
-  const ensureLocation = async () => {
-    if (coords) return coords;
-    if (!navigator.geolocation) return null;
+  const handleOrderSubmit = async () => {
+    if (!user) {
+      setIsPaymentModalOpen(false);
+      setIsAuthModalOpen(true);
+      return;
+    }
+    if (!userRecordReady) {
+      setOrderNotice('Your account is still syncing. Please try again in a moment.');
+      return;
+    }
+    if (cartTotal <= 0) {
+      setOrderNotice('Orders need at least one item with a listed price.');
+      return;
+    }
+
+    setIsSubmittingOrder(true);
     try {
-      return await new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const next = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-            };
-            setCoords(next);
-            resolve(next);
-          },
-          () => resolve(null),
-          { enableHighAccuracy: false, timeout: 4000, maximumAge: 120_000 }
-        );
+      const { order, committed } = await createStudentOrder({ uid: user.uid, items: cart, scheduledFor: scheduleValue });
+      setLastOrderEntry({ uid: user.uid, order });
+      setCart([]);
+      setIsPaymentModalOpen(false);
+      setOrderNotice(`Order sent. Your token is ${order.token_number}. Pay at the counter.`);
+      onOrderPlaced(order);
+      void committed.catch((error: unknown) => {
+        console.error('Order confirmation failed:', error);
+        if (currentUidRef.current !== user.uid) return;
+        onOrderRejected(order.id);
+        setCart(cart);
+        setLastOrderEntry((current) => current?.order.id === order.id ? null : current);
+        setOrderNotice('The order could not be confirmed. Your cart has been restored; please try again.');
       });
-    } catch {
-      return null;
-    }
-  };
-
-  const submitOrder = async (paymentPayload: Record<string, unknown>) => {
-    const position = await ensureLocation();
-
-    const items = cart.map(item => ({
-      itemId: item.itemId,
-      quantity: item.quantity,
-    }));
-
-    const result = await placeOrderFn({
-      items,
-      latitude: position?.latitude,
-      longitude: position?.longitude,
-      scheduled_for: scheduleValue,
-      ...paymentPayload,
-    });
-
-    const data = result.data as { orderId: string; token_number: string };
-    setActiveOrderIds(prev => prev.includes(data.orderId) ? prev : [...prev, data.orderId]);
-    setCart([]);
-    setIsPaymentModalOpen(false);
-    if (onOpenOrdersModal) onOpenOrdersModal();
-    else setIsStatusModalOpen(true);
-  };
-
-  const handlePaymentSubmit = async () => {
-    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
-
-    setIsProcessingPayment(true);
-    try {
-      const position = await ensureLocation();
-
-      if (cartTotal === 0 || paymentProvider === 'pay_at_counter') {
-        await submitOrder({
-          payment_method: 'PAY_AT_COUNTER',
-        });
-        return;
-      }
-
-      if (paymentProvider === 'razorpay' && razorpayKeyId) {
-        const created = await createPaymentOrderFn({
-          items: cart.map(i => ({ itemId: i.itemId, quantity: i.quantity })),
-          latitude: position?.latitude,
-          longitude: position?.longitude,
-          scheduled_for: scheduleValue,
-        });
-        const orderData = created.data as {
-          razorpayOrderId: string;
-          amount: number;
-          currency: string;
-          keyId: string;
-        };
-
-        const scriptOk = await loadRazorpayScript();
-        if (!scriptOk || !window.Razorpay) {
-          throw new Error('Could not load Razorpay checkout.');
-        }
-
-        await new Promise<void>((resolve, reject) => {
-          const rzp = new window.Razorpay!({
-            key: orderData.keyId,
-            amount: orderData.amount,
-            currency: orderData.currency,
-            name: 'PICT Canteen',
-            description: 'Food Order Payment',
-            order_id: orderData.razorpayOrderId,
-            prefill: {
-              name: auth.currentUser?.displayName || 'Student',
-              email: auth.currentUser?.email || '',
-            },
-            theme: { color: '#4F46E5' },
-            handler: async (response: {
-              razorpay_order_id: string;
-              razorpay_payment_id: string;
-              razorpay_signature: string;
-            }) => {
-              try {
-                await submitOrder({
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                });
-                resolve();
-              } catch (err) {
-                reject(err);
-              }
-            },
-            modal: {
-              ondismiss: () => reject(new Error('Payment cancelled')),
-              escape: true,
-            }
-          });
-          rzp.open();
-        });
-      } else {
-        throw new Error('Online payment is not configured. Choose Pay at Counter.');
-      }
     } catch (error: any) {
       console.error('Order placement failed:', error);
-      const msg = error?.message || error?.code || 'Failed to place order. Please try again.';
+      const msg = error?.message || 'Could not place the order. Please try again.';
       setOrderNotice(typeof msg === 'string' ? msg : 'Failed to place order.');
     } finally {
-      setIsProcessingPayment(false);
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -708,7 +453,10 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
           <div className="max-w-md mx-auto pointer-events-auto">
             <button
               onClick={() => {
-                void fetchPaymentConfig();
+                if (!user) {
+                  setIsAuthModalOpen(true);
+                  return;
+                }
                 setIsPaymentModalOpen(true);
               }}
               className="w-full bg-slate-900 hover:bg-black text-white rounded-full p-3.5 px-5 flex items-center justify-between shadow-2xl shadow-slate-900/30 google-touch google-ripple transition-all cursor-pointer"
@@ -720,18 +468,34 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
                 <div className="text-left">
                   <span className="font-bold text-xs block">{totalCartCount} item{totalCartCount > 1 ? 's' : ''} in cart</span>
                   <span className="text-[11px] text-slate-300 font-medium">
-                    {paymentProvider === 'pay_at_counter' ? 'Pay at Counter' : 'Online Payment'}
+                    Pay at counter
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="font-black text-lg">₹{cartTotal.toFixed(2)}</span>
-                <span className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3.5 py-1.5 rounded-full transition-colors">
-                  Review & Pay ➔
+                <span className="font-semibold text-base tabular-nums">₹{cartTotal.toFixed(2)}</span>
+                <span className="rounded-full bg-white/15 px-3.5 py-2 text-xs font-semibold">
+                  Review order
                 </span>
               </div>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sign In Modal for Unauthenticated Users */}
+      {isAuthModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="relative w-full max-w-md">
+            <button
+              onClick={() => setIsAuthModalOpen(false)}
+              className="absolute right-4 top-4 z-10 w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 cursor-pointer shadow-xs"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+            <StudentAuth mode="dialog" />
           </div>
         </div>
       )}
@@ -743,32 +507,27 @@ export default function StudentView({ sharedActiveOrders, onOpenOrdersModal }: S
         <Suspense fallback={null}>
           <CartReviewView
             isOpen={isPaymentModalOpen}
-            onClose={() => setIsPaymentModalOpen(false)}
+            onClose={() => {
+              setIsPaymentModalOpen(false);
+              setOrderNotice(null);
+            }}
             cart={cart}
             menu={menu}
             onAddToCart={addToCart}
             onRemoveFromCart={removeFromCart}
             onClearCart={() => setCart([])}
             cartTotal={cartTotal}
-            paymentProvider={paymentProvider}
-            onSelectPaymentProvider={setPaymentProvider}
             scheduledFor={scheduledFor}
             onSelectScheduledFor={setScheduledFor}
             customTime={customTime}
             onSelectCustomTime={setCustomTime}
-            isProcessing={isProcessingPayment}
-            onSubmit={handlePaymentSubmit}
+            canSubmit={userRecordReady}
+            isProcessing={isSubmittingOrder}
+            orderNotice={orderNotice}
+            onClearNotice={() => setOrderNotice(null)}
+            onSubmit={handleOrderSubmit}
           />
         </Suspense>
-      )}
-
-      {/* Local tracker only when App does not own the modal */}
-      {!onOpenOrdersModal && (
-        <OrderTrackerModal
-          isOpen={isStatusModalOpen}
-          onClose={() => setIsStatusModalOpen(false)}
-          orders={activeOrders}
-        />
       )}
 
     </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { MenuItem, OrderItem } from '../types';
-import { Plus, Minus, Zap, Flame } from 'lucide-react';
+import { Plus, Minus, Zap, Flame, Leaf } from 'lucide-react';
+import { getFoodDetails } from '../lib/foodDetails';
 
 interface DishCardProps {
   item: MenuItem;
@@ -18,10 +19,11 @@ export const DishCard = React.memo(function DishCard({
   onRemoveFromCart,
 }: DishCardProps) {
   const quantity = cartItem?.quantity || 0;
+  const details = getFoodDetails(item);
 
   return (
     <div
-      className={`group relative p-4 rounded-2xl bg-white border transition-all duration-200 ${
+      className={`group relative p-4 rounded-[1.25rem] bg-white border transition-all duration-200 ${
         quantity > 0
           ? 'border-blue-500/80 shadow-md shadow-blue-500/10 bg-gradient-to-r from-blue-50/30 via-white to-white'
           : 'border-slate-200/80 shadow-xs hover:shadow-md hover:border-slate-300'
@@ -52,6 +54,11 @@ export const DishCard = React.memo(function DishCard({
             ₹{item.price}
           </span>
         </div>
+        <p className="mt-1 truncate text-xs font-medium text-slate-600">{details.catchyLine}</p>
+        <div className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
+          <Leaf size={13} className="mt-0.5 shrink-0 text-emerald-600" />
+          <span className="line-clamp-2">{details.nutritionBenefit}</span>
+        </div>
       </div>
 
       {/* Right Stepper / Add Button */}
@@ -74,6 +81,7 @@ export const DishCard = React.memo(function DishCard({
             </span>
             <button
               onClick={() => onAddToCart(item)}
+              disabled={quantity >= 20}
               className="w-7 h-7 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white google-touch cursor-pointer"
               aria-label="Increase quantity"
             >
@@ -83,7 +91,8 @@ export const DishCard = React.memo(function DishCard({
         ) : (
           <button
             onClick={() => onAddToCart(item)}
-            className="px-4 py-1.5 rounded-full bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white font-bold text-xs flex items-center gap-1 border border-blue-200/80 google-touch google-ripple transition-all cursor-pointer shadow-2xs"
+            disabled={item.price <= 0}
+            className="px-4 py-1.5 rounded-full bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white font-bold text-xs flex items-center gap-1 border border-blue-200/80 google-touch google-ripple transition-all cursor-pointer shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Plus size={13} /> Add
           </button>

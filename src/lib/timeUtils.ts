@@ -15,21 +15,54 @@ export function formatTime12h(timeStr: string): string {
   return `${hours}:${minutes} ${ampm}`;
 }
 
-/**
- * Validates whether a given time is within canteen operating hours: 9:00 AM to 6:00 PM (09:00 - 18:00)
- */
-export function isWithinOperatingHours(timeStr: string): boolean {
-  if (!timeStr) return false;
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?:\s*([AaPp][Mm]))?$/);
-  if (!match) return false;
-  let hours = parseInt(match[1], 10);
-  const minutes = parseInt(match[2], 10);
-  const meridiem = match[3]?.toUpperCase();
-  if (minutes < 0 || minutes > 59) return false;
-  if (meridiem === 'PM' && hours < 12) hours += 12;
-  if (meridiem === 'AM' && hours === 12) hours = 0;
-  if (hours < 0 || hours > 23) return false;
-  const totalMins = hours * 60 + minutes;
-  // 9:00 AM (540 mins) to 6:00 PM (1080 mins)
-  return totalMins >= 540 && totalMins <= 1080;
+export interface PickupSlot {
+  value: string;
+  label: string;
+}
+
+function formatMinutes(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60) % 24;
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function minutesInPune(now: Date): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+  return hour * 60 + minute;
+}
+
+export function getPickupSlots(now = new Date()): PickupSlot[] {
+  const openMinutes = 9 * 60;
+  const lastStartMinutes = 17 * 60 + 45;
+  const earliestStart = Math.ceil((minutesInPune(now) + 15) / 15) * 15;
+  const firstStart = Math.max(openMinutes, earliestStart);
+  const slots: PickupSlot[] = [];
+
+  for (let start = firstStart; start <= lastStartMinutes; start += 15) {
+    const end = start + 15;
+    slots.push({
+      value: formatMinutes(start),
+      label: `${formatTime12h(formatMinutes(start))} – ${formatTime12h(formatMinutes(end))}`,
+    });
+  }
+  return slots;
+}
+
+export function isValidPickupSlot(timeStr: string): boolean {
+  const match = timeStr.match(/^(09|1[0-7]):(00|15|30|45)$/);
+  return Boolean(match);
+}
+
+export function formatPickupSlot(timeStr: string): string {
+  if (!isValidPickupSlot(timeStr)) return timeStr;
+  const [hourPart, minutePart] = timeStr.split(':').map(Number);
+  const start = hourPart * 60 + minutePart;
+  return `${formatTime12h(timeStr)} – ${formatTime12h(formatMinutes(start + 15))}`;
 }

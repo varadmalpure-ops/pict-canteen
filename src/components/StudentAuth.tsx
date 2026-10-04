@@ -1,182 +1,146 @@
 import { useState } from 'react';
+import {
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+} from 'firebase/auth';
+import { ArrowRight, Loader2, LockKeyhole, Mail, UtensilsCrossed } from 'lucide-react';
 import { auth } from '../firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { Loader2, Lock, Mail, Info, UtensilsCrossed, ArrowRight } from 'lucide-react';
 
-export default function StudentAuth() {
-  const [isLogin, setIsLogin] = useState(true);
+export default function StudentAuth({ mode = 'page' }: { mode?: 'page' | 'dialog' }) {
+  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
+  const [notice, setNotice] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const formatAuthError = (err: any) => {
+    const code = err?.code || '';
+    if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
+      return 'That email and password combination could not be signed in. You can create an account below.';
+    }
+    if (code.includes('email-already-in-use')) return 'An account already uses this email. Sign in instead.';
+    if (code.includes('weak-password')) return 'Choose a password with at least six characters.';
+    if (code.includes('invalid-email')) return 'Enter a valid email address.';
+    if (code.includes('popup-closed-by-user') || code.includes('cancelled-popup-request')) return 'Google sign-in was closed before it finished.';
+    if (code.includes('network-request-failed')) return 'Check your internet connection and try again.';
+    return err?.message || 'Sign-in could not be completed. Please try again.';
+  };
 
-    if (!isLogin) {
-      const normalized = email.trim().toLowerCase();
-      if (!normalized.endsWith('@pict.edu') && !normalized.endsWith('@pict.edu.in')) {
-        setError('Register with your PICT email (@pict.edu or @pict.edu.in).');
-        return;
-      }
-      if (password.length < 6) {
-        setError('Password must be at least 6 characters.');
-        return;
-      }
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    if (isCreatingAccount && password.length < 6) {
+      setError('Choose a password with at least six characters.');
+      return;
     }
 
     setLoading(true);
     try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        await createUserWithEmailAndPassword(auth, email, password);
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Authentication failed. Please check your credentials.');
+      if (isCreatingAccount) await createUserWithEmailAndPassword(auth, email.trim(), password);
+      else await signInWithEmailAndPassword(auth, email.trim(), password);
+    } catch (err) {
+      setError(formatAuthError(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleAuth = async () => {
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError('');
+    setNotice('');
     try {
-      setLoading(true);
-      setError('');
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const googleEmail = (result.user.email || '').toLowerCase();
-      if (!isLogin && googleEmail && !googleEmail.endsWith('@pict.edu') && !googleEmail.endsWith('@pict.edu.in')) {
-        await result.user.delete().catch(() => auth.signOut());
-        setError('Register with your PICT Google account (@pict.edu / @pict.edu.in).');
-        setLoading(false);
-        return;
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Google Authentication failed.');
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (err) {
+      setError(formatAuthError(err));
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] bg-gradient-to-b from-slate-50 to-blue-50/30 p-4 sm:p-6 font-sans">
-      <div className="w-full max-w-md bg-white p-7 sm:p-9 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100">
-        
-        {/* Brand Header */}
-        <div className="text-center mb-6">
-          <div className="w-14 h-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-blue-500/25">
-            <UtensilsCrossed size={26} />
-          </div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-            PICT Canteen
-          </h2>
-          <p className="text-slate-500 text-xs font-medium mt-1">
-            {isLogin ? 'Sign in to order food, track tokens, and skip the line' : 'Create an account to start ordering on campus'}
-          </p>
+  const handlePasswordReset = async () => {
+    setError('');
+    setNotice('');
+    if (!email.trim()) {
+      setError('Enter your email address first, then choose “Forgot password?”.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setNotice('If an account exists for that email, a password reset link is on the way.');
+    } catch (err) {
+      setError(formatAuthError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const card = (
+    <section className="w-full max-w-md rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <div className="mb-6 text-center">
+        <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-blue-50 text-blue-700">
+          <UtensilsCrossed size={24} />
         </div>
-
-        {/* Tab Switcher */}
-        <div className="flex bg-slate-100 p-1 rounded-2xl mb-6 border border-slate-200/60">
-          <button
-            type="button"
-            onClick={() => { setIsLogin(true); setError(''); }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer google-touch ${
-              isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => { setIsLogin(false); setError(''); }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer google-touch ${
-              !isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            Create Account
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-5 p-3.5 bg-rose-50 text-rose-600 rounded-2xl text-xs font-medium border border-rose-100 flex items-start gap-2.5 animate-in fade-in">
-            <Info size={16} className="mt-0.5 shrink-0 text-rose-500" />
-            <p className="leading-relaxed">{error}</p>
-          </div>
-        )}
-
-        {/* 1-Tap Google Sign In */}
-        <button
-          type="button"
-          onClick={handleGoogleAuth}
-          disabled={loading}
-          className="w-full py-3.5 px-4 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-3 shadow-xs hover:shadow transition-all google-touch google-ripple disabled:opacity-50 mb-5 cursor-pointer"
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-4 h-4" />
-          Continue with Google
-        </button>
-
-        <div className="relative flex items-center justify-center mb-5">
-          <div className="border-t border-slate-200 w-full" />
-          <span className="bg-white px-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">
-            or with email
-          </span>
-          <div className="border-t border-slate-200 w-full" />
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 ml-1">Email</label>
-            <div className="relative group">
-              <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:border-blue-500 outline-none text-xs font-semibold text-slate-900 transition-all placeholder:text-slate-400"
-                placeholder="student@pict.edu"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 ml-1">Password</label>
-            <div className="relative group">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:border-blue-500 outline-none text-xs font-semibold text-slate-900 transition-all placeholder:text-slate-400"
-                placeholder="••••••••"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs shadow-md google-touch google-ripple transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-2 cursor-pointer"
-          >
-            {loading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <>
-                {isLogin ? 'Sign In' : 'Create Account'}
-                <ArrowRight size={14} />
-              </>
-            )}
-          </button>
-        </form>
-
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{isCreatingAccount ? 'Create your account' : 'Welcome back'}</h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-500">
+          {isCreatingAccount ? 'Sign up once to order ahead and follow your pickup token.' : 'Sign in to place an order and keep track of your pickup.'}
+        </p>
       </div>
-    </div>
+
+      <button type="button" onClick={handleGoogleSignIn} disabled={loading} className="google-touch flex min-h-12 w-full items-center justify-center gap-3 rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50">
+        <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.06 13.22l7.98 6.19C12.02 13.72 17.51 9.5 24 9.5Z" transform="translate(0 4)" />
+          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.76 7.18l7.73 6C44.42 38.03 46.98 31.95 46.98 24.55Z" />
+          <path fill="#FBBC05" d="M10.04 28.59a14.4 14.4 0 0 1 0-9.18l-7.98-6.19a23.93 23.93 0 0 0 0 21.56l7.98-6.19Z" transform="translate(0 4)" />
+          <path fill="#34A853" d="M24 48c6.47 0 11.9-2.13 15.87-5.8l-7.73-6c-2.14 1.44-4.88 2.3-8.14 2.3-6.49 0-11.98-4.22-13.96-10.09l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" />
+        </svg>
+        Sign in with Google
+      </button>
+
+      <div className="my-5 flex items-center gap-3 text-xs font-medium text-slate-400"><span className="h-px flex-1 bg-slate-200" />or use email<span className="h-px flex-1 bg-slate-200" /></div>
+
+      {error && <p role="alert" className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
+      {notice && <p role="status" className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</p>}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="block text-sm font-medium text-slate-700">
+          Email address
+          <span className="relative mt-1.5 block">
+            <Mail size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className="min-h-12 w-full rounded-2xl border border-slate-300 bg-white pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
+          </span>
+        </label>
+
+        <label className="block text-sm font-medium text-slate-700">
+          Password
+          <span className="relative mt-1.5 block">
+            <LockKeyhole size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="password" required minLength={isCreatingAccount ? 6 : undefined} autoComplete={isCreatingAccount ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={isCreatingAccount ? 'At least 6 characters' : 'Your password'} className="min-h-12 w-full rounded-2xl border border-slate-300 bg-white pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
+          </span>
+        </label>
+
+        {!isCreatingAccount && <button type="button" onClick={handlePasswordReset} disabled={loading} className="-mt-1 text-sm font-medium text-blue-700 hover:underline disabled:opacity-50">Forgot password?</button>}
+
+        <button type="submit" disabled={loading} className="google-touch flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-blue-700 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-50">
+          {loading ? <Loader2 size={18} className="animate-spin" /> : <>{isCreatingAccount ? 'Create account' : 'Sign in'} <ArrowRight size={16} /></>}
+        </button>
+      </form>
+
+      <p className="mt-5 text-center text-sm text-slate-600">
+        {isCreatingAccount ? 'Already have an account?' : 'New to PICT Canteen?'}{' '}
+        <button type="button" onClick={() => { setIsCreatingAccount((value) => !value); setError(''); setNotice(''); }} className="font-semibold text-blue-700 hover:underline">
+          {isCreatingAccount ? 'Sign in' : 'Create an account'}
+        </button>
+      </p>
+    </section>
   );
+
+  if (mode === 'dialog') return card;
+  return <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-[#f6f7fb] p-4 sm:p-6">{card}</div>;
 }

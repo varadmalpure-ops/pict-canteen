@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, deleteDoc, setDoc, limit } from 'firebase/firestore';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, type User } from 'firebase/auth';
-import { db, menuItemsCollection, auth, updateOrderStatusFn } from '../firebase';
+import { db, menuItemsCollection, auth } from '../firebase';
 import { assertIsAdmin } from '../lib/adminAuth';
+import { updateOrderStatus } from '../lib/orderService';
+import { formatPickupSlot } from '../lib/timeUtils';
 import type { MenuItem, Order, OrderStatus } from '../types';
 import { 
   ShieldCheck, 
@@ -21,14 +23,7 @@ import {
 
 export default function AdminView() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [menu, setMenu] = useState<MenuItem[]>(() => {
-    try {
-      const cached = localStorage.getItem('pict_canteen_menu_cache');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [menu, setMenu] = useState<MenuItem[]>([]);
   const [tab, setTab] = useState<'INVENTORY' | 'ORDERS' | 'ANALYTICS'>('INVENTORY');
   const [searchMenu, setSearchMenu] = useState('');
 
@@ -38,6 +33,8 @@ export default function AdminView() {
   const [newItemPrice, setNewItemPrice] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('');
   const [newItemIsExpress, setNewItemIsExpress] = useState(false);
+  const [newItemTagline, setNewItemTagline] = useState('');
+  const [newItemNutrition, setNewItemNutrition] = useState('');
 
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState('');
@@ -49,8 +46,8 @@ export default function AdminView() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         const ok = await assertIsAdmin(currentUser);
+        if (auth.currentUser?.uid !== currentUser.uid) return;
         if (!ok) {
-          await signOut(auth);
           setLoginError('Access Denied: You do not have manager/admin permissions.');
           setUser(null);
         } else {
@@ -81,17 +78,17 @@ export default function AdminView() {
       setOrders(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
     });
 
-    const unsubMenu = onSnapshot(menuItemsCollection, (snapshot) => {
-      const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as MenuItem));
+    const unsubMenu = onSnapshot(query(menuItemsCollection, limit(200)), (snapshot) => {
+      const items = snapshot.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, ...data, price: Number(data.price) } as MenuItem;
+      });
       items.sort((a, b) => {
         const catCmp = (a.category || '').localeCompare(b.category || '');
         if (catCmp !== 0) return catCmp;
         return (a.name || '').localeCompare(b.name || '');
       });
       setMenu(items);
-      try {
-        localStorage.setItem('pict_canteen_menu_cache', JSON.stringify(items));
-      } catch {}
     });
 
     return () => {
@@ -105,8 +102,12 @@ export default function AdminView() {
     try {
       setLoginError('');
       await signInWithEmailAndPassword(auth, email, password);
-    } catch {
-      setLoginError('Invalid email or password');
+    } catch (err: any) {
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        setLoginError('Incorrect email or password. Please try again.');
+      } else {
+        setLoginError(err?.message || 'Invalid email or password');
+      }
     }
   };
 
@@ -150,28 +151,32 @@ export default function AdminView() {
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newItemName || !newItemCategory) return;
+    if (!newItemName.trim() || !newItemCategory.trim()) return;
     const price = Number(newItemPrice);
-    if (price < 0) {
-      alert('Price must be 0 or positive');
+    if (!Number.isFinite(price) || price <= 0) {
+      alert('Price must be greater than zero.');
       return;
     }
 
     try {
       if (editingItem) {
         await updateDoc(doc(db, 'menuItems', editingItem.id), {
-          name: newItemName,
+          name: newItemName.trim(),
           price,
-          category: newItemCategory,
+          category: newItemCategory.trim(),
           is_express: newItemIsExpress,
+          catchy_line: newItemTagline.trim(),
+          nutrition_benefit: newItemNutrition.trim(),
         });
       } else {
         await addDoc(menuItemsCollection, {
-          name: newItemName,
+          name: newItemName.trim(),
           price,
-          category: newItemCategory,
+          category: newItemCategory.trim(),
           is_available: true,
           is_express: newItemIsExpress,
+          catchy_line: newItemTagline.trim(),
+          nutrition_benefit: newItemNutrition.trim(),
         });
       }
       setIsFormOpen(false);
@@ -180,6 +185,8 @@ export default function AdminView() {
       setNewItemPrice('');
       setNewItemCategory('');
       setNewItemIsExpress(false);
+      setNewItemTagline('');
+      setNewItemNutrition('');
     } catch (e) {
       console.error(e);
       alert('Failed to save menu item');
@@ -188,10 +195,7 @@ export default function AdminView() {
 
   const advanceOrderStatus = async (order: Order, nextStatus: OrderStatus) => {
     try {
-      await updateOrderStatusFn({
-        orderId: order.id,
-        status: nextStatus,
-      });
+      await updateOrderStatus(order, nextStatus);
     } catch (e) {
       console.error(e);
       alert('Failed to update order status');
@@ -240,12 +244,20 @@ export default function AdminView() {
             </div>
           )}
 
+          <div className="relative flex items-center justify-center mb-4">
+            <div className="border-t border-slate-200 w-full" />
+            <span className="bg-white px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+              or
+            </span>
+            <div className="border-t border-slate-200 w-full" />
+          </div>
+
           <button
             type="button"
             onClick={handleGoogleLogin}
-            className="w-full py-3.5 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-3 shadow-xs mb-4 transition-all"
+            className="w-full py-2.5 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-2xs mb-4 transition-all cursor-pointer"
           >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-4 h-4" />
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-3.5 h-3.5" />
             Sign in with Google
           </button>
 
@@ -256,6 +268,7 @@ export default function AdminView() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
+                autoComplete="username"
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-semibold focus:bg-white focus:border-indigo-500"
                 required
               />
@@ -266,12 +279,13 @@ export default function AdminView() {
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                autoComplete="current-password"
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-semibold focus:bg-white focus:border-indigo-500"
                 required
               />
             </div>
             <button type="submit" className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-black transition-all">
-              Sign In with Email
+              Sign in
             </button>
           </form>
         </div>
@@ -372,6 +386,8 @@ export default function AdminView() {
                 setNewItemPrice('');
                 setNewItemCategory('');
                 setNewItemIsExpress(false);
+                setNewItemTagline('');
+                setNewItemNutrition('');
                 setIsFormOpen(true);
               }}
               className="px-4 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-all"
@@ -438,6 +454,8 @@ export default function AdminView() {
                         setNewItemPrice(String(item.price));
                         setNewItemCategory(item.category);
                         setNewItemIsExpress(Boolean(item.is_express));
+                        setNewItemTagline(item.catchy_line || '');
+                        setNewItemNutrition(item.nutrition_benefit || '');
                         setIsFormOpen(true);
                       }}
                       className="p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
@@ -484,7 +502,7 @@ export default function AdminView() {
                     </span>
                     {order.scheduled_for && (
                       <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                        🕒 {order.scheduled_for}
+                        🕒 {formatPickupSlot(order.scheduled_for)}
                       </span>
                     )}
                   </div>
@@ -579,8 +597,8 @@ export default function AdminView() {
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Price (₹)</label>
                   <input
                     type="number"
-                    step="1"
-                    min="0"
+                    step="0.01"
+                    min="0.01"
                     required
                     value={newItemPrice}
                     onChange={e => setNewItemPrice(e.target.value)}
@@ -600,6 +618,31 @@ export default function AdminView() {
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-semibold focus:bg-white focus:border-indigo-500"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Catchy line <span className="font-medium normal-case text-slate-400">(optional)</span></label>
+                <input
+                  type="text"
+                  maxLength={100}
+                  value={newItemTagline}
+                  onChange={e => setNewItemTagline(e.target.value)}
+                  placeholder="A little campus comfort, ready for your next break."
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-semibold focus:bg-white focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Nutrition highlight <span className="font-medium normal-case text-slate-400">(optional)</span></label>
+                <textarea
+                  rows={2}
+                  maxLength={180}
+                  value={newItemNutrition}
+                  onChange={e => setNewItemNutrition(e.target.value)}
+                  placeholder="Add a recipe-based note about ingredients and nutrition."
+                  className="w-full resize-none px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 outline-none text-xs font-semibold focus:bg-white focus:border-indigo-500"
+                />
+                <p className="mt-1 text-[10px] text-slate-400">Keep claims tied to the actual recipe; avoid medical or calorie claims unless verified.</p>
               </div>
 
               <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl border border-amber-200/60">

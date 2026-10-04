@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { collection, onSnapshot, query, where, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, limit } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, type User } from 'firebase/auth';
-import { auth, db, updateOrderStatusFn } from '../firebase';
+import { auth, db } from '../firebase';
 import { assertIsAdmin } from '../lib/adminAuth';
+import { updateOrderStatus } from '../lib/orderService';
+import { formatPickupSlot } from '../lib/timeUtils';
 import type { Order } from '../types';
 import { 
   ChefHat, 
@@ -74,6 +76,7 @@ export default function KitchenView() {
         return;
       }
       const ok = await assertIsAdmin(currentUser);
+      if (auth.currentUser?.uid !== currentUser.uid) return;
       if (!ok) {
         setLoginError('This screen is for canteen staff. Sign in with a staff account.');
         setUser(null);
@@ -90,7 +93,8 @@ export default function KitchenView() {
     if (!user) return;
     const q = query(
       collection(db, 'orders'),
-      where('status', 'in', ['Pending', 'PREPARING', 'READY'])
+      where('status', 'in', ['Pending', 'PREPARING', 'READY']),
+      limit(100)
     );
     const unsub = onSnapshot(q, (snapshot) => {
       const activeList = snapshot.docs
@@ -131,85 +135,16 @@ export default function KitchenView() {
     });
 
     try {
-      // Direct Firestore writes (admin rules) — does not wait on Cloud Functions
-      const batch = writeBatch(db);
-      const orderUpdate: Record<string, unknown> = { status: nextStatus };
-      if (nextStatus === 'PREPARING') orderUpdate.payment_status = 'Verified';
-      batch.update(doc(db, 'orders', orderId), orderUpdate);
-
-      const boardRef = doc(db, 'displayBoard', orderId);
-      if (nextStatus === 'COMPLETED') {
-        batch.delete(boardRef);
-      } else {
-        batch.set(boardRef, {
-          token_number: current?.token_number || '',
-          status: nextStatus,
-          updated_at: serverTimestamp(),
-        }, { merge: true });
-      }
-      await batch.commit();
-    } catch (directErr) {
-      try {
-        await updateOrderStatusFn({
-          orderId,
-          status: nextStatus,
-          verifyPayment: nextStatus === 'PREPARING',
-        });
-      } catch (e: any) {
-        console.error('Status update failed:', directErr, e);
-        setOrders(previous);
-        setStatusError(e?.message || 'Failed to update order status');
-      }
+      if (!current) throw new Error('This order is no longer in the kitchen queue.');
+      await updateOrderStatus(current, nextStatus);
+    } catch (e: any) {
+      console.error('Status update failed:', e);
+      setOrders(previous);
+      setStatusError(e?.message || 'Failed to update order status');
     } finally {
       setIsUpdating(null);
     }
   };
-
-  if (authLoading) {
-    return <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center text-slate-500 font-bold text-sm">Checking kitchen access...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-6 bg-slate-50">
-        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
-          <h2 className="text-xl font-black text-slate-900 mb-2">Kitchen Staff Login</h2>
-          <p className="text-xs text-slate-500 mb-6">Admin credentials required. Public Live TV is at /live.</p>
-          {loginError && <p className="text-rose-600 text-xs font-semibold mb-3">{loginError}</p>}
-          <form
-            className="space-y-3"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                setLoginError('');
-                await signInWithEmailAndPassword(auth, email, password);
-              } catch {
-                setLoginError('Invalid email or password');
-              }
-            }}
-          >
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Staff email" className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none" />
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none" />
-            <button type="submit" className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-sm">Sign In</button>
-          </form>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                setLoginError('');
-                await signInWithPopup(auth, new GoogleAuthProvider());
-              } catch {
-                setLoginError('Google sign-in failed');
-              }
-            }}
-            className="w-full mt-3 py-3 border border-slate-200 rounded-xl font-bold text-sm"
-          >
-            Continue with Google
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
@@ -224,6 +159,65 @@ export default function KitchenView() {
   const pendingOrders = useMemo(() => orders.filter(o => o.status === 'Pending'), [orders]);
   const preparingOrders = useMemo(() => orders.filter(o => o.status === 'PREPARING'), [orders]);
   const readyOrders = useMemo(() => orders.filter(o => o.status === 'READY'), [orders]);
+
+  if (authLoading) {
+    return <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center text-slate-500 font-bold text-sm">Checking kitchen access...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-6 bg-slate-50">
+        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+          <div className="text-center mb-5">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center mx-auto mb-3 shadow-md">
+              <ChefHat size={26} />
+            </div>
+            <h2 className="text-xl font-black text-slate-900 mb-1">Kitchen Display Screen</h2>
+            <p className="text-xs text-slate-500">Authorized staff portal for order cooking & fulfillment</p>
+          </div>
+
+          {loginError && <p className="text-rose-600 text-xs font-semibold mb-3 p-3 bg-rose-50 rounded-xl">{loginError}</p>}
+
+          <form
+            className="space-y-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                setLoginError('');
+                await signInWithEmailAndPassword(auth, email, password);
+              } catch (err: any) {
+                if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+                  setLoginError('Incorrect email or password. Please try again.');
+                } else {
+                  setLoginError(err?.message || 'Invalid email or password');
+                }
+              }
+            }}
+          >
+            <input type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Staff email" className="w-full px-4 py-3 rounded-2xl border border-slate-300 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
+            <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full px-4 py-3 rounded-2xl border border-slate-300 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
+            <button type="submit" className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-full font-semibold text-sm transition-colors cursor-pointer">Sign in</button>
+          </form>
+          <div className="my-4 flex items-center gap-3 text-xs font-medium text-slate-400"><span className="h-px flex-1 bg-slate-200" />or<span className="h-px flex-1 bg-slate-200" /></div>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                setLoginError('');
+                await signInWithPopup(auth, new GoogleAuthProvider());
+              } catch {
+                setLoginError('Google sign-in failed');
+              }
+            }}
+            className="w-full min-h-12 border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-full font-semibold text-sm flex items-center justify-center gap-3 cursor-pointer transition-colors"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-3.5 h-3.5" />
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50 text-slate-900 font-sans p-4 sm:p-6 pb-28">
@@ -284,13 +278,6 @@ export default function KitchenView() {
           >
             <ShieldCheck size={14} className="text-blue-600" /> Manager
           </Link>
-          <button
-            type="button"
-            onClick={() => signOut(auth)}
-            className="px-3 py-2 bg-white hover:bg-rose-50 border border-slate-200 text-rose-600 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-          >
-            <LogOut size={14} /> Sign out
-          </button>
 
           <Link
             to="/live"
@@ -299,6 +286,14 @@ export default function KitchenView() {
           >
             <ExternalLink size={14} /> TV Display
           </Link>
+
+          <button
+            type="button"
+            onClick={() => signOut(auth)}
+            className="px-3 py-2 bg-white hover:bg-rose-50 border border-slate-200 text-rose-600 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+          >
+            <LogOut size={14} /> Sign out
+          </button>
         </div>
       </div>
 
@@ -376,7 +371,7 @@ export default function KitchenView() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredOrders.map(order => {
-              const isPaid = order.payment_status === 'Verified' || order.payment_method === 'Razorpay' || order.total_amount === 0;
+              const isPaid = order.payment_status === 'Verified';
 
               return (
                 <div
@@ -428,7 +423,7 @@ export default function KitchenView() {
 
                       {order.scheduled_for && (
                         <span className="text-slate-600 font-semibold bg-white border border-slate-200 px-2.5 py-1 rounded-lg text-[11px]">
-                          🕒 {order.scheduled_for}
+                          🕒 {formatPickupSlot(order.scheduled_for)}
                         </span>
                       )}
                     </div>

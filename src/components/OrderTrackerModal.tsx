@@ -1,5 +1,6 @@
 import type { Order } from '../types';
 import { X, CheckCircle2, ChefHat, BellRing, Utensils, Clock } from 'lucide-react';
+import { formatPickupSlot } from '../lib/timeUtils';
 
 interface OrderTrackerModalProps {
   isOpen: boolean;
@@ -66,7 +67,7 @@ export default function OrderTrackerModal({
                   {order.scheduled_for && (
                     <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-3 py-1 rounded-full shadow-2xs">
                       <Clock size={13} className="text-amber-600" />
-                      <span>Pickup: {order.scheduled_for}</span>
+                      <span>Pickup: {formatPickupSlot(order.scheduled_for)}</span>
                     </div>
                   )}
                   {order.payment_status === 'Unverified' && (

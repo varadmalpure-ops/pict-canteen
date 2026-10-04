@@ -1,68 +1,50 @@
-# PICT Canteen Ordering System
+# PICT Canteen
 
-A lightweight, real-time web application to streamline order management and eliminate counter crowding at the PICT Canteen.
+A lightweight, real-time canteen ordering app built with React, Vite, TypeScript, Firebase Authentication, and Cloud Firestore.
 
-## Technology Stack
-- **Frontend**: React (Vite) + TypeScript
-- **Styling**: Tailwind CSS v4
-- **Icons**: Lucide React
-- **Database/Backend**: Firebase Firestore (Real-time syncing)
+## Project layout
 
-## Folder Structure
 ```text
-.
-├── src/
-│   ├── components/
-│   │   ├── StudentView.tsx    # Customer-facing menu, cart, and live tracker
-│   │   └── AdminView.tsx      # Canteen staff kitchen display and inventory toggle
-│   ├── App.tsx                # Application routing layout
-│   ├── firebase.ts            # Firebase configuration
-│   ├── initDb.ts              # Script to populate mock menu data
-│   ├── types.ts               # TypeScript interfaces for database schema
-│   ├── main.tsx               # React entry point
-│   └── index.css              # Tailwind CSS v4 styling
-├── vite.config.ts             # Vite configuration with Tailwind plugin
-└── package.json               # Dependencies
+src/
+  components/   Student menu, sign-in, checkout, kitchen, admin, and live board
+  lib/           Firestore order writes, admin checks, food details, and pickup slots
+  App.tsx        Auth hydration, routes, and shared active-order listener
+  firebase.ts    Firebase client setup
+  types.ts       Menu and order data types
+firestore.rules  Authorization and data validation for client writes
+firestore.indexes.json  Composite indexes for live and recent order queries
+firebase.json    Spark-safe Hosting and Firestore deployment config
 ```
 
-## Setup Instructions
+## Firebase setup
 
-### 1. Firebase Configuration
-1. Create a Firebase project and enable **Auth**, **Firestore**, **Storage**, and **Functions**.
-2. Copy `.env.example` to `.env` and fill in the web app config + App Check reCAPTCHA site key.
-3. Deploy rules and functions:
-```bash
-firebase deploy --only firestore:rules,storage,functions
-```
-4. In Firebase Console → App Check: enforce App Check for **Firestore**, **Storage**, and **Cloud Functions**.
-5. (Optional) Razorpay online payments:
-```bash
-firebase functions:config:set razorpay.key_id="rzp_..." razorpay.key_secret="..." razorpay.webhook_secret="..."
-firebase deploy --only functions
-```
-Without Razorpay, students pay via UPI + UTR; staff must verify before advancing the order.
+1. Enable **Email/Password** and **Google** sign-in in Firebase Authentication.
+2. Create a Cloud Firestore database and register a Firebase web app.
+3. Copy `.env.example` to `.env` and set the Firebase web app values. The web API key is a public client identifier; apply API restrictions and App Check in the Firebase Console.
+4. Create the first staff grant in Firestore Console at `admins/{staff-auth-uid}` (for example, add `{ "role": "admin" }`). Further staff can be granted by an existing admin or through a custom `admin` claim.
+5. Deploy the Hosting site and Firestore rules with `npm run deploy`.
 
-### 2. Run the Development Server
+The app uses Firebase Authentication, Firestore, and Firebase Hosting. It does not require Cloud Functions or Cloud Storage. Profile photo upload and online payment are not part of this Spark build. Checkout uses **Pay at the counter**; add online payment only with a trusted payment-verification backend.
+
+The deploy script updates Hosting and Firestore rules/indexes only. It does not remove Cloud Functions or Storage resources that were already deployed to Firebase; review and remove those remote resources separately if they are no longer needed.
+
+## Orders and security
+
+- The client writes an order, its public token/status board entry, and the user's order cooldown marker in one Firestore batch.
+- Firestore rules compare every submitted item against the live menu, check the total, bound quantities and line count, restrict pickup times to 15-minute slots, and enforce order ownership and the staff status flow.
+- Full order records are visible to the owner and authorized staff. The public live board contains only a token and status.
+- Orders use short tokens derived from Firestore's random document IDs; this avoids a counter service.
+- Firebase App Check can be enabled with `VITE_RECAPTCHA_SITE_KEY` and enforced in the Firebase Console. Security rules remain the authorization boundary.
+
+## Local development
+
 ```bash
 npm install
 npm run dev
 ```
-For local App Check, enable a debug token in the Firebase Console and uncomment `self.FIREBASE_APPCHECK_DEBUG_TOKEN = true` in `src/firebase.ts`.
 
-### 3. Initialize Database
-Call `initializeDatabase()` from `initDb.ts` while signed in as an admin (menu writes require admin). The token counter is created automatically by Cloud Functions on the first order.
+Use an authorized staff account to manage menu items. Optional menu copy fields let staff add a catchy line and a recipe-based nutrition highlight; the student menu has cautious fallback copy for older menu records.
 
-## Security model
-- Orders are created only via authenticated callable `placeOrder` (server prices from `menuItems`; Razorpay uses stored `paymentIntents` only).
-- Clients cannot write `orders` or `metadata/counter`. Order reads are owner-or-admin only.
-- Live TV reads `displayBoard` (token + status only). Kitchen `/kitchen` requires admin login and reads full tickets from `orders`.
-- New accounts start as `verificationStatus: pending`. Registration expects `@pict.edu` / `@pict.edu.in`.
-- Admin access: custom claim `admin`, `admins/{uid}`, or bootstrap emails in **rules/functions only** (not in the Vite client).
-- App Check is required on callables (`enforceAppCheck: true`). Set `VITE_RECAPTCHA_SITE_KEY`.
+## Spark limits
 
-## Features
-- **Student View (`/`)**: Cart → server-validated order → token (e.g. `#A-104`).
-- **Payments**: Razorpay (signature-verified) when configured; otherwise Pay at Counter with staff verification.
-- **Admin View (`/admin`)**: Inventory, analytics, order management.
-- **Kitchen (`/kitchen`)**: Auth-gated KDS with full ticket details.
-- **Live TV (`/live`)**: Public token board without customer data.
+The Firestore free tier includes 50,000 reads, 20,000 writes, and 20,000 deletes per day for one database; daily quotas reset around midnight Pacific time. Spark can disable a product after its plan quota is exceeded, so monitor reads and writes in the Firebase Console, especially live listeners for the menu, kitchen queue, and public board.

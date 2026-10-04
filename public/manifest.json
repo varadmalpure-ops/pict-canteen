@@ -4,8 +4,8 @@
   "description": "PICT Canteen Ordering App",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#2563eb",
+  "background_color": "#f6f7fb",
+  "theme_color": "#f6f7fb",
   "icons": [
     {
       "src": "/favicon.svg",
