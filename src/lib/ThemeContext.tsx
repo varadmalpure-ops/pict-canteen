@@ -1,19 +1,6 @@
-import React, { createContext, useEffect, useState } from 'react';
-import { THEME_OPTIONS, type FoodTheme, type ThemeOption } from './themeConstants';
-
-interface ThemeContextType {
-  theme: FoodTheme;
-  setTheme: (theme: FoodTheme) => void;
-  activeThemeOption: ThemeOption;
-  isDark: boolean;
-}
-
-export const ThemeContext = createContext<ThemeContextType>({
-  theme: 'slate',
-  setTheme: () => {},
-  activeThemeOption: THEME_OPTIONS[0],
-  isDark: false,
-});
+import React, { useEffect, useState } from 'react';
+import { THEME_OPTIONS, type FoodTheme } from './themeConstants';
+import { ThemeContext } from './themeContextDef';
 
 const STORAGE_KEY = 'pict_canteen_theme_preference';
 
@@ -25,7 +12,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         return saved;
       }
     } catch {}
-    return 'slate';
+    // Default to the signature WhatsApp Pudina Emerald
+    return 'mint';
   });
 
   const activeThemeOption = THEME_OPTIONS.find((t) => t.id === theme) || THEME_OPTIONS[0];
@@ -51,9 +39,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       document.body.classList.remove('dark');
     }
 
-    // Set CSS theme background on body
+    // Set solid color & pronounced WhatsApp-style food doodle wallpaper on body
     document.body.style.backgroundColor = activeThemeOption.bgHex;
-  }, [theme, isDark, activeThemeOption.bgHex]);
+    document.body.style.backgroundImage = activeThemeOption.patternUrl;
+    document.body.style.backgroundRepeat = 'repeat';
+    document.body.style.backgroundSize = '360px 360px';
+    document.body.style.backgroundAttachment = 'fixed';
+  }, [theme, isDark, activeThemeOption]);
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, activeThemeOption, isDark }}>

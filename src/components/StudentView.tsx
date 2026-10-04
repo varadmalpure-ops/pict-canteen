@@ -381,8 +381,8 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
   return (
     <div className="max-w-3xl mx-auto px-4 pb-36 font-sans">
       
-      {/* Sticky Search Bar & Category Chips */}
-      <div className="sticky top-16 z-30 bg-inherit backdrop-blur-xl pt-2 pb-3 mb-4 border-b border-slate-200/70 -mx-4 px-4 transition-colors">
+      {/* Floating Sticky Search Bar & Category Chips */}
+      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-xl pt-3 pb-3 mb-5 border border-slate-200/90 shadow-md rounded-3xl px-4 mt-2 transition-all">
         <div className="relative mb-2.5">
           <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
             <Search size={17} className="text-blue-700" />
@@ -392,7 +392,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search samosa, cutting chai, wada pav, misal, thali..."
-            className="w-full bg-white pl-11 pr-10 py-3 rounded-full text-xs font-bold text-slate-950 outline-none border border-slate-200 shadow-xs focus:border-blue-600 focus:ring-3 focus:ring-blue-600/15 transition-all placeholder:text-slate-400 placeholder:font-normal"
+            className="w-full bg-slate-50 pl-11 pr-10 py-3 rounded-full text-xs font-bold text-slate-950 outline-none border border-slate-200 shadow-2xs focus:border-blue-600 focus:bg-white focus:ring-3 focus:ring-blue-600/15 transition-all placeholder:text-slate-400 placeholder:font-normal"
           />
           {searchQuery && (
             <button
@@ -406,13 +406,13 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
         </div>
 
         {/* Horizontal Category Filter Pills with Complementary Colors */}
-        <div className="flex gap-2 overflow-x-auto py-1.5 px-0.5 text-xs no-scrollbar scroll-smooth items-center">
+        <div className="flex gap-2 overflow-x-auto py-1 px-0.5 text-xs no-scrollbar scroll-smooth items-center">
           {categories.map(cat => {
             const isAll = cat === 'ALL';
             const isTop8 = cat === 'TOP_8';
             const isSelected = selectedCategory === cat;
 
-            let buttonClass = 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50';
+            let buttonClass = 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100';
             if (isSelected) {
               if (isTop8) {
                 buttonClass = 'bg-amber-400 text-slate-950 border border-amber-500 shadow-xs ring-2 ring-amber-400/30';
@@ -427,7 +427,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full font-black text-xs whitespace-nowrap leading-none transition-all cursor-pointer active:scale-95 ${buttonClass}`}
+                className={`shrink-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-full font-black text-xs whitespace-nowrap leading-none transition-all cursor-pointer active:scale-95 ${buttonClass}`}
               >
                 {isAll ? (
                   <span>🌟 All Dishes</span>
@@ -486,17 +486,17 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
       {selectedCategory === 'ALL' && !searchQuery && recommendations.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3 px-1">
-            <div className="flex items-center gap-2">
+            <div className="inline-flex items-center gap-2 bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-xs border border-slate-200/80">
               <span className="p-1 rounded-lg bg-amber-100 text-amber-800">
-                <Sparkles size={16} />
+                <Sparkles size={15} />
               </span>
-              <h3 className="font-black text-sm text-slate-950 tracking-tight">
+              <h3 className="font-black text-xs text-slate-950 tracking-tight">
                 Recommended For You
               </h3>
             </div>
             <button
               onClick={() => setSelectedCategory('TOP_8')}
-              className="text-[11px] font-black text-blue-700 hover:text-blue-800 cursor-pointer"
+              className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full text-[11px] font-black text-blue-700 hover:text-blue-800 cursor-pointer shadow-xs border border-slate-200/80 active:scale-95 transition-transform"
             >
               View Top 8 →
             </button>
@@ -522,15 +522,15 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
       {selectedCategory === 'TOP_8' && !searchQuery && (
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3 px-1">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-xl bg-amber-400 text-slate-950">
+            <div className="inline-flex items-center gap-2.5 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-xs border border-slate-200/80">
+              <span className="p-1.5 rounded-xl bg-amber-400 text-slate-950 shadow-2xs">
                 <Star size={16} className="fill-slate-950" />
               </span>
               <div>
-                <h3 className="font-black text-base text-slate-950 tracking-tight">
+                <h3 className="font-black text-sm text-slate-950 tracking-tight">
                   8 Most Bought Canteen Items
                 </h3>
-                <span className="text-[11px] font-bold text-slate-400">Campus favorites based on daily student orders</span>
+                <span className="text-[10px] font-bold text-slate-500 block">Campus favorites based on daily student orders</span>
               </div>
             </div>
           </div>
@@ -567,9 +567,11 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
 
               return (
                 <div key={category}>
-                  <div className="flex justify-between items-baseline mb-2 px-1">
-                    <h3 className="font-black text-sm text-slate-950 tracking-tight">{category}</h3>
-                    <span className="text-[11px] font-bold text-slate-400">{categoryItems.length} items</span>
+                  <div className="flex justify-between items-center mb-2 px-1">
+                    <div className="inline-flex items-center gap-2 bg-white/95 backdrop-blur-md px-3 py-1 rounded-full shadow-xs border border-slate-200/80">
+                      <h3 className="font-black text-xs text-slate-950 tracking-tight">{category}</h3>
+                      <span className="text-[10px] font-bold text-slate-500">· {categoryItems.length} items</span>
+                    </div>
                   </div>
                   <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs divide-y divide-slate-100 overflow-hidden">
                     {categoryItems.map(item => (
@@ -688,19 +690,19 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
       )}
 
       {/* Subtle discreet footer with staff portal access */}
-      <footer className="mt-16 pt-8 pb-4 border-t border-slate-200/60 text-center">
-        <p className="text-[11px] font-bold text-slate-400">
+      <footer className="mt-16 p-6 bg-white/90 backdrop-blur-md rounded-3xl border border-slate-200/80 text-center shadow-xs">
+        <p className="text-[11px] font-bold text-slate-700">
           PICT Canteen · 100% Pure Vegetarian Campus Kitchen
         </p>
-        <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-slate-400">
+        <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-slate-500 font-medium">
           <span>Pune Institute of Computer Technology</span>
           <span>·</span>
           <Link
             to="/admin"
-            className="inline-flex items-center gap-1 hover:text-slate-600 transition-colors"
+            className="inline-flex items-center gap-1 text-slate-600 hover:text-blue-700 font-bold transition-colors"
             title="Canteen Staff & Manager Portal"
           >
-            <Shield size={10} />
+            <Shield size={11} />
             <span>Staff Portal</span>
           </Link>
         </div>

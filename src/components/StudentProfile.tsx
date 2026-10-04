@@ -142,26 +142,35 @@ export default function StudentProfile() {
                 key={opt.id}
                 type="button"
                 onClick={() => setTheme(opt.id as FoodTheme)}
-                className={`flex flex-col p-3 rounded-2xl border-2 text-left transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] ${
+                className={`relative flex flex-col p-3 rounded-2xl border-2 text-left transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] shadow-xs overflow-hidden ${
                   isSelected
-                    ? 'border-blue-600 ring-2 ring-blue-500/20 shadow-xs'
-                    : 'border-slate-200 hover:border-slate-300'
+                    ? 'border-blue-600 ring-2 ring-blue-500/30'
+                    : 'border-slate-200 hover:border-slate-400'
                 }`}
                 style={{
                   backgroundColor: opt.bgHex,
+                  backgroundImage: opt.patternUrl,
+                  backgroundSize: '160px 160px',
+                  backgroundRepeat: 'repeat',
                   color: opt.isDark ? '#f8fafc' : '#0f172a',
                 }}
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xl select-none">{opt.emoji}</span>
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/90 text-slate-900 shadow-2xs backdrop-blur-xs text-xs">
+                    {opt.emojis.slice(0, 3).map((em, idx) => (
+                      <span key={idx} className="select-none">{em}</span>
+                    ))}
+                  </div>
                   {isSelected && (
-                    <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center">
-                      <Check size={10} strokeWidth={3} />
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                      <Check size={12} strokeWidth={3} />
                     </span>
                   )}
                 </div>
-                <span className="font-extrabold text-xs line-clamp-1">{opt.name}</span>
-                <span className="text-[10px] opacity-70 line-clamp-1">{opt.tagline}</span>
+                <div className="p-1.5 rounded-lg bg-white/95 text-slate-950 shadow-2xs backdrop-blur-xs border border-black/5 mt-auto">
+                  <span className="font-black text-xs line-clamp-1 block">{opt.name}</span>
+                  <span className="text-[10px] text-slate-500 font-semibold line-clamp-1 block">{opt.tagline}</span>
+                </div>
               </button>
             );
           })}
