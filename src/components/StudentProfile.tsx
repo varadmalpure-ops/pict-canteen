@@ -95,7 +95,7 @@ export default function StudentProfile() {
       )}
 
       {/* User Information */}
-      <section className="rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-2xs">
+      <section className="rounded-3xl border theme-border theme-surface p-5 sm:p-6 shadow-2xs">
         <div className="flex items-center gap-4">
           <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-500/20">
             <UserRound size={26} />
@@ -105,7 +105,7 @@ export default function StudentProfile() {
             <p className="truncate text-xs text-slate-500 font-semibold">{profileData.email}</p>
           </div>
         </div>
-        <div className="mt-4 border-t border-slate-100 pt-3">
+        <div className="mt-4 border-t theme-border pt-3">
           {verified ? (
             <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
               <CheckCircle2 size={14} className="text-emerald-600" /> Student account verified
@@ -123,7 +123,7 @@ export default function StudentProfile() {
       </section>
 
       {/* Background Theme Selector Section */}
-      <section className="rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-2xs">
+      <section className="rounded-3xl border theme-border theme-surface p-5 sm:p-6 shadow-2xs">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <Palette size={18} className="text-amber-500" />
@@ -131,12 +131,13 @@ export default function StudentProfile() {
           </div>
         </div>
         <p className="text-xs text-slate-500 font-medium mb-4">
-          Personalize the canteen background with colorful, appetizing tones.
+          Light WhatsApp chat wallpapers, matching tinted title bar & plain white option.
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-          {THEME_OPTIONS.map((opt) => {
+          {THEME_OPTIONS.filter((o, idx, arr) => arr.findIndex(t => t.id === o.id) === idx && o.id !== 'midnight').map((opt) => {
             const isSelected = theme === opt.id;
+            const hasPattern = opt.patternUrl !== 'none';
             return (
               <button
                 key={opt.id}
@@ -145,18 +146,18 @@ export default function StudentProfile() {
                 className={`relative flex flex-col p-3 rounded-2xl border-2 text-left transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] shadow-xs overflow-hidden ${
                   isSelected
                     ? 'border-blue-600 ring-2 ring-blue-500/30'
-                    : 'border-slate-200 hover:border-slate-400'
+                    : 'border-slate-300 hover:border-slate-400'
                 }`}
                 style={{
                   backgroundColor: opt.bgHex,
-                  backgroundImage: opt.patternUrl,
+                  backgroundImage: hasPattern ? opt.patternUrl : 'none',
                   backgroundSize: '160px 160px',
                   backgroundRepeat: 'repeat',
-                  color: opt.isDark ? '#f8fafc' : '#0f172a',
+                  color: '#0f172a',
                 }}
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/90 text-slate-900 shadow-2xs backdrop-blur-xs text-xs">
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/90 text-slate-900 shadow-2xs backdrop-blur-xs text-xs border border-black/5">
                     {opt.emojis.slice(0, 3).map((em, idx) => (
                       <span key={idx} className="select-none">{em}</span>
                     ))}
@@ -167,7 +168,13 @@ export default function StudentProfile() {
                     </span>
                   )}
                 </div>
-                <div className="p-1.5 rounded-lg bg-white/95 text-slate-950 shadow-2xs backdrop-blur-xs border border-black/5 mt-auto">
+                <div 
+                  className="p-1.5 rounded-lg text-slate-950 shadow-2xs backdrop-blur-xs border mt-auto"
+                  style={{
+                    backgroundColor: opt.surfaceHex,
+                    borderColor: opt.borderHex,
+                  }}
+                >
                   <span className="font-black text-xs line-clamp-1 block">{opt.name}</span>
                   <span className="text-[10px] text-slate-500 font-semibold line-clamp-1 block">{opt.tagline}</span>
                 </div>
@@ -178,7 +185,7 @@ export default function StudentProfile() {
       </section>
 
       {/* Password Change */}
-      <section className="rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-2xs">
+      <section className="rounded-3xl border theme-border theme-surface p-5 sm:p-6 shadow-2xs">
         <h2 className="flex items-center gap-2 text-sm font-black text-slate-950">
           <LockKeyhole size={17} className="text-blue-700" /> Change Password
         </h2>

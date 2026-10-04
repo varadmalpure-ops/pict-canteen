@@ -12,8 +12,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         return saved;
       }
     } catch {}
-    // Default to the signature WhatsApp Pudina Emerald
-    return 'mint';
+    // Default to the signature Classic WhatsApp Parchment
+    return 'slate';
   });
 
   const activeThemeOption = THEME_OPTIONS.find((t) => t.id === theme) || THEME_OPTIONS[0];
@@ -31,6 +31,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.setAttribute('data-food-theme', theme);
     document.body.setAttribute('data-food-theme', theme);
 
+    // Dynamic tinted surfaces for title bar, cards, search, and modals
+    root.style.setProperty('--theme-bg', activeThemeOption.bgHex);
+    root.style.setProperty('--theme-surface', activeThemeOption.surfaceHex);
+    root.style.setProperty('--theme-surface-subtle', activeThemeOption.surfaceSubtleHex);
+    root.style.setProperty('--theme-border', activeThemeOption.borderHex);
+    root.style.setProperty('--theme-accent', activeThemeOption.accentHex);
+
     if (isDark) {
       root.classList.add('dark');
       document.body.classList.add('dark');
@@ -39,12 +46,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       document.body.classList.remove('dark');
     }
 
-    // Set solid color & pronounced WhatsApp-style food doodle wallpaper on body
+    // Set solid color & WhatsApp-style food doodle wallpaper on body
     document.body.style.backgroundColor = activeThemeOption.bgHex;
-    document.body.style.backgroundImage = activeThemeOption.patternUrl;
-    document.body.style.backgroundRepeat = 'repeat';
-    document.body.style.backgroundSize = '360px 360px';
-    document.body.style.backgroundAttachment = 'fixed';
+    if (activeThemeOption.patternUrl === 'none') {
+      document.body.style.backgroundImage = 'none';
+    } else {
+      document.body.style.backgroundImage = activeThemeOption.patternUrl;
+      document.body.style.backgroundRepeat = 'repeat';
+      document.body.style.backgroundSize = '360px 360px';
+      document.body.style.backgroundAttachment = 'fixed';
+    }
   }, [theme, isDark, activeThemeOption]);
 
   return (

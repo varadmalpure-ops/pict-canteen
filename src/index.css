@@ -16,6 +16,14 @@
 }
 
 @layer base {
+  :root {
+    --theme-bg: #e8e2d8;
+    --theme-surface: #f7f4ee;
+    --theme-surface-subtle: #ede8df;
+    --theme-border: rgba(0, 0, 0, 0.08);
+    --theme-accent: #1d4ed8;
+  }
+
   html {
     color-scheme: light;
     -webkit-tap-highlight-color: transparent;
@@ -192,5 +200,22 @@
 
 [data-food-theme="midnight"] .bg-slate-100 {
   background-color: #334155 !important;
+}
+
+/* Dynamic Tinted Theme Surfaces */
+.theme-surface {
+  background-color: var(--theme-surface) !important;
+}
+
+.theme-surface-subtle {
+  background-color: var(--theme-surface-subtle) !important;
+}
+
+.theme-border {
+  border-color: var(--theme-border) !important;
+}
+
+.theme-divide > * + * {
+  border-color: var(--theme-border) !important;
 }
 

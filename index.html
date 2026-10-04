@@ -12,22 +12,30 @@
     <script>
       (function() {
         try {
-          var saved = localStorage.getItem('pict_canteen_theme_preference') || 'mint';
+          var saved = localStorage.getItem('pict_canteen_theme_preference') || 'slate';
           var themes = {
-            mint: { bg: '#065f46', pattern: '/patterns/food-doodle-light.svg' },
-            saffron: { bg: '#eab308', pattern: '/patterns/food-doodle-dark.svg' },
-            chai: { bg: '#9a3412', pattern: '/patterns/food-doodle-light.svg' },
-            paprika: { bg: '#be123c', pattern: '/patterns/food-doodle-light.svg' },
-            slate: { bg: '#e8e2d8', pattern: '/patterns/food-doodle-dark.svg' },
-            midnight: { bg: '#0b0f19', pattern: '/patterns/food-doodle-light.svg' }
+            slate: { bg: '#e8e2d8', surface: '#f7f4ee', pattern: '/patterns/food-doodle-dark.svg' },
+            mint: { bg: '#d5ecd9', surface: '#eff8f1', pattern: '/patterns/food-doodle-dark.svg' },
+            saffron: { bg: '#fae8be', surface: '#fefaf0', pattern: '/patterns/food-doodle-dark.svg' },
+            chai: { bg: '#ebdcd0', surface: '#f9f5f1', pattern: '/patterns/food-doodle-dark.svg' },
+            paprika: { bg: '#fadcd9', surface: '#fdf4f3', pattern: '/patterns/food-doodle-dark.svg' },
+            blue: { bg: '#d9e7f5', surface: '#f1f6fc', pattern: '/patterns/food-doodle-dark.svg' },
+            midnight: { bg: '#d9e7f5', surface: '#f1f6fc', pattern: '/patterns/food-doodle-dark.svg' },
+            white: { bg: '#ffffff', surface: '#ffffff', pattern: 'none' }
           };
-          var t = themes[saved] || themes.mint;
+          var t = themes[saved] || themes.slate;
           document.documentElement.setAttribute('data-food-theme', saved);
+          document.documentElement.style.setProperty('--theme-bg', t.bg);
+          document.documentElement.style.setProperty('--theme-surface', t.surface);
           document.body.style.backgroundColor = t.bg;
-          document.body.style.backgroundImage = "url('" + t.pattern + "')";
-          document.body.style.backgroundRepeat = 'repeat';
-          document.body.style.backgroundSize = '360px 360px';
-          document.body.style.backgroundAttachment = 'fixed';
+          if (t.pattern === 'none') {
+            document.body.style.backgroundImage = 'none';
+          } else {
+            document.body.style.backgroundImage = "url('" + t.pattern + "')";
+            document.body.style.backgroundRepeat = 'repeat';
+            document.body.style.backgroundSize = '360px 360px';
+            document.body.style.backgroundAttachment = 'fixed';
+          }
         } catch (e) {}
       })();
     </script>

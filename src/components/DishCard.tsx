@@ -28,7 +28,7 @@ export const DishCard = React.memo(function DishCard({
 
   return (
     <div
-      className={`group relative flex items-center justify-between gap-3 sm:gap-4 p-3.5 sm:p-4 bg-white border-b border-slate-100 transition-all hover:bg-slate-50/80 ${
+      className={`group relative flex items-center justify-between gap-3 sm:gap-4 p-3.5 sm:p-4 theme-surface border-b theme-border transition-all hover:bg-black/2 ${
         quantity > 0 ? 'bg-blue-50/25' : ''
       }`}
     >
@@ -161,7 +161,7 @@ export const DishCard = React.memo(function DishCard({
               type="button"
               onClick={() => onAddToCart(item)}
               disabled={item.price <= 0}
-              className="w-full py-1 rounded-xl bg-white hover:bg-blue-50 text-blue-700 font-black text-xs uppercase tracking-wider border-2 border-blue-700 shadow-2xs active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-0.5"
+              className="w-full py-1 rounded-xl theme-surface hover:bg-blue-50 text-blue-700 font-black text-xs uppercase tracking-wider border-2 border-blue-700 shadow-2xs active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-0.5"
             >
               <Plus size={13} strokeWidth={3} />
               <span>ADD</span>

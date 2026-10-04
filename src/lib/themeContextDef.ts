@@ -9,7 +9,7 @@ export interface ThemeContextType {
 }
 
 export const ThemeContext = createContext<ThemeContextType>({
-  theme: 'mint',
+  theme: 'slate',
   setTheme: () => {},
   activeThemeOption: THEME_OPTIONS[0],
   isDark: false,

@@ -27,7 +27,7 @@ export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: N
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/95 backdrop-blur-xl transition-colors">
+      <header className="sticky top-0 z-40 border-b theme-border theme-surface backdrop-blur-xl transition-colors">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
           {/* Logo & Canteen Identity */}
           <Link to="/" onClick={closeMenu} className="flex min-w-0 items-center gap-2.5 rounded-xl text-slate-950 group">
@@ -120,7 +120,7 @@ export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: N
 
         {/* Mobile Dropdown Menu */}
         {menuOpen && (
-          <nav className="border-b border-slate-200 bg-white p-3 shadow-lg md:hidden animate-in slide-in-from-top-2 duration-150" aria-label="Mobile navigation">
+          <nav className="border-b theme-border theme-surface p-3 shadow-lg md:hidden animate-in slide-in-from-top-2 duration-150" aria-label="Mobile navigation">
             <Link to="/" onClick={closeMenu} className={`${linkClass('/')} w-full justify-start py-2.5`}>
               Menu
             </Link>
@@ -130,7 +130,7 @@ export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: N
                 closeMenu();
                 setIsThemeOpen(true);
               }}
-              className="flex min-h-10 w-full items-center gap-2 rounded-full px-4 text-xs font-bold text-slate-700 hover:bg-slate-100"
+              className="flex min-h-10 w-full items-center gap-2 rounded-full px-4 text-xs font-bold text-slate-700 hover:bg-black/5"
             >
               <Palette size={16} className="text-amber-500" />
               <span>Background Theme</span>

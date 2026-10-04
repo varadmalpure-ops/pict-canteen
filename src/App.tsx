@@ -154,7 +154,7 @@ function App() {
             className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4"
             aria-label="Loading PICT Canteen"
           >
-            <div className="bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-2xl rounded-3xl p-8 max-w-xs w-full text-center flex flex-col items-center animate-in zoom-in-95 duration-200">
+            <div className="theme-surface backdrop-blur-xl border theme-border shadow-2xl rounded-3xl p-8 max-w-xs w-full text-center flex flex-col items-center animate-in zoom-in-95 duration-200">
               <div className="w-16 h-16 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30 mb-4 animate-bounce">
                 <UtensilsCrossed size={32} />
               </div>

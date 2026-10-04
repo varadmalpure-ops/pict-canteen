@@ -46,7 +46,7 @@ export default function RushMeter({ queueCount }: RushMeterProps) {
     <div className={`p-3.5 rounded-2xl border ${badgeColor} transition-colors duration-200 flex items-center justify-between shadow-xs mb-5`}>
       <div className="flex items-center gap-3">
         <div className="relative flex items-center justify-center">
-          <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-xs">
+          <div className="w-8 h-8 rounded-xl theme-surface flex items-center justify-center shadow-xs">
             <Clock size={16} />
           </div>
           <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ${dotColor} shadow-sm animate-pulse`} />

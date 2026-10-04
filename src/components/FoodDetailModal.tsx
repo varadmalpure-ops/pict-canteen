@@ -28,7 +28,7 @@ export default function FoodDetailModal({
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
       <div 
-        className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-100 animate-in zoom-in-95 duration-200"
+        className="w-full max-w-lg theme-surface rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border theme-border animate-in zoom-in-95 duration-200"
         role="dialog"
         aria-modal="true"
         aria-labelledby="food-modal-title"
@@ -104,7 +104,7 @@ export default function FoodDetailModal({
           </div>
 
           {/* Nutritional Facts Grid */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+          <div className="rounded-2xl border theme-border theme-surface p-4 shadow-2xs">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
@@ -152,7 +152,7 @@ export default function FoodDetailModal({
         </div>
 
         {/* Modal Sticky Bottom Bar: Add to Cart */}
-        <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between gap-4 shrink-0">
+        <div className="p-4 theme-surface border-t theme-border flex items-center justify-between gap-4 shrink-0">
           <div>
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Price</span>
             <span className="text-xl sm:text-2xl font-black text-slate-900">₹{item.price}</span>

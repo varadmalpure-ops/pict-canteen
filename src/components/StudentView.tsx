@@ -428,7 +428,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
     <div className="max-w-3xl mx-auto px-4 pb-36 font-sans">
       
       {/* Floating Sticky Search Bar & Category Chips */}
-      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-xl pt-3 pb-3 mb-5 border border-slate-200/90 shadow-md rounded-3xl px-4 mt-2 transition-all">
+      <div className="sticky top-16 z-30 theme-surface backdrop-blur-xl pt-3 pb-3 mb-5 border theme-border shadow-md rounded-3xl px-4 mt-2 transition-all">
         <div className="relative mb-2.5">
           <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
             <Search size={17} className="text-blue-700" />
@@ -438,12 +438,12 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search samosa, cutting chai, wada pav, misal, thali..."
-            className="w-full bg-slate-50 pl-11 pr-10 py-3 rounded-full text-xs font-bold text-slate-950 outline-none border border-slate-200 shadow-2xs focus:border-blue-600 focus:bg-white focus:ring-3 focus:ring-blue-600/15 transition-all placeholder:text-slate-400 placeholder:font-normal"
+            className="w-full theme-surface-subtle pl-11 pr-10 py-3 rounded-full text-xs font-bold text-slate-950 outline-none border theme-border shadow-2xs focus:border-blue-600 focus:bg-[var(--theme-surface)] focus:ring-3 focus:ring-blue-600/15 transition-all placeholder:text-slate-400 placeholder:font-normal"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-black/5 cursor-pointer"
               aria-label="Clear search"
             >
               <X size={15} />
@@ -458,7 +458,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
             const isTop8 = cat === 'TOP_8';
             const isSelected = selectedCategory === cat;
 
-            let buttonClass = 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100';
+            let buttonClass = 'theme-surface text-slate-700 border theme-border hover:theme-surface-subtle';
             if (isSelected) {
               if (isTop8) {
                 buttonClass = 'bg-amber-400 text-slate-950 border border-amber-500 shadow-xs ring-2 ring-amber-400/30';
@@ -532,7 +532,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
       {selectedCategory === 'ALL' && !searchQuery && recommendations.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3 px-1">
-            <div className="inline-flex items-center gap-2 bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-xs border border-slate-200/80">
+            <div className="inline-flex items-center gap-2 theme-surface backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-xs border theme-border">
               <span className="p-1 rounded-lg bg-amber-100 text-amber-800">
                 <Sparkles size={15} />
               </span>
@@ -542,12 +542,12 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
             </div>
             <button
               onClick={() => setSelectedCategory('TOP_8')}
-              className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full text-[11px] font-black text-blue-700 hover:text-blue-800 cursor-pointer shadow-xs border border-slate-200/80 active:scale-95 transition-transform"
+              className="theme-surface backdrop-blur-md px-3 py-1.5 rounded-full text-[11px] font-black text-blue-700 hover:text-blue-800 cursor-pointer shadow-xs border theme-border active:scale-95 transition-transform"
             >
               View Top 8 →
             </button>
           </div>
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+          <div className="theme-surface rounded-2xl border theme-border shadow-2xs divide-y theme-divide overflow-hidden">
             {recommendations.slice(0, 4).map(item => (
               <DishCard
                 key={`rec-${item.id}`}
@@ -568,7 +568,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
       {selectedCategory === 'TOP_8' && !searchQuery && (
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3 px-1">
-            <div className="inline-flex items-center gap-2.5 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-xs border border-slate-200/80">
+            <div className="inline-flex items-center gap-2.5 theme-surface backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-xs border theme-border">
               <span className="p-1.5 rounded-xl bg-amber-400 text-slate-950 shadow-2xs">
                 <Star size={16} className="fill-slate-950" />
               </span>
@@ -580,7 +580,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
               </div>
             </div>
           </div>
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+          <div className="theme-surface rounded-2xl border theme-border shadow-2xs divide-y theme-divide overflow-hidden">
             {top8Bestsellers.map(item => (
               <DishCard
                 key={`top8-${item.id}`}
@@ -600,7 +600,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
       {/* Category List or Search Results */}
       {selectedCategory !== 'TOP_8' && (
         filteredMenu.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 bg-white rounded-3xl border border-slate-200/80 my-4 shadow-2xs">
+          <div className="p-12 text-center text-slate-400 theme-surface rounded-3xl border theme-border my-4 shadow-2xs">
             <UtensilsCrossed size={36} className="mx-auto mb-2 text-slate-300" />
             <h4 className="font-bold text-slate-800 text-sm">No dishes found</h4>
             <p className="text-xs text-slate-400 mt-1">Try another keyword or tap All Dishes.</p>
@@ -614,12 +614,12 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
               return (
                 <div key={category}>
                   <div className="flex justify-between items-center mb-2 px-1">
-                    <div className="inline-flex items-center gap-2 bg-white/95 backdrop-blur-md px-3 py-1 rounded-full shadow-xs border border-slate-200/80">
+                    <div className="inline-flex items-center gap-2 theme-surface backdrop-blur-md px-3 py-1 rounded-full shadow-xs border theme-border">
                       <h3 className="font-black text-xs text-slate-950 tracking-tight">{category}</h3>
                       <span className="text-[10px] font-bold text-slate-500">· {categoryItems.length} items</span>
                     </div>
                   </div>
-                  <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+                  <div className="theme-surface rounded-2xl border theme-border shadow-2xs divide-y theme-divide overflow-hidden">
                     {categoryItems.map(item => (
                       <DishCard
                         key={item.id}
@@ -736,7 +736,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
       )}
 
       {/* Subtle discreet footer with staff portal access */}
-      <footer className="mt-16 p-6 bg-white/90 backdrop-blur-md rounded-3xl border border-slate-200/80 text-center shadow-xs">
+      <footer className="mt-16 p-6 theme-surface backdrop-blur-md rounded-3xl border theme-border text-center shadow-xs">
         <p className="text-[11px] font-bold text-slate-700">
           PICT Canteen · 100% Pure Vegetarian Campus Kitchen
         </p>
