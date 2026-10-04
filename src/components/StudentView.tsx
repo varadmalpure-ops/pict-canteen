@@ -17,6 +17,7 @@ import {
   UtensilsCrossed,
 } from 'lucide-react';
 import DishCard from './DishCard';
+import FoodDetailModal from './FoodDetailModal';
 import RushMeter from './RushMeter';
 import StudentAuth from './StudentAuth';
 import type { User } from 'firebase/auth';
@@ -36,6 +37,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
   const [cart, setCart] = useState<OrderItem[]>([]);
   const activeOrders = sharedActiveOrders;
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [selectedFoodItem, setSelectedFoodItem] = useState<MenuItem | null>(null);
   const [lastOrderEntry, setLastOrderEntry] = useState<{ uid: string; order: Order } | null>(null);
   const lastOrder = lastOrderEntry?.uid === user?.uid ? lastOrderEntry?.order ?? null : null;
   const [queueCount, setQueueCount] = useState<number | null>(null);
@@ -252,22 +254,16 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
 
     setIsSubmittingOrder(true);
     try {
-      const { order, committed } = await createStudentOrder({ uid: user.uid, items: cart, scheduledFor: scheduleValue });
-      setLastOrderEntry({ uid: user.uid, order });
+      const { committed } = await createStudentOrder({ uid: user.uid, items: cart, scheduledFor: scheduleValue });
+      const finalOrder = await committed;
+      setLastOrderEntry({ uid: user.uid, order: finalOrder });
       setCart([]);
       setIsPaymentModalOpen(false);
-      setOrderNotice(`Order sent. Your token is ${order.token_number}. Pay at the counter.`);
-      onOrderPlaced(order);
-      void committed.catch((error: unknown) => {
-        console.error('Order confirmation failed:', error);
-        if (currentUidRef.current !== user.uid) return;
-        onOrderRejected(order.id);
-        setCart(cart);
-        setLastOrderEntry((current) => current?.order.id === order.id ? null : current);
-        setOrderNotice('The order could not be confirmed. Your cart has been restored; please try again.');
-      });
+      setOrderNotice(`Order placed! Your Token is #${finalOrder.token_number}. Pay at the counter.`);
+      onOrderPlaced(finalOrder);
     } catch (error: any) {
       console.error('Order placement failed:', error);
+      onOrderRejected('failed');
       const msg = error?.message || 'Could not place the order. Please try again.';
       setOrderNotice(typeof msg === 'string' ? msg : 'Failed to place order.');
     } finally {
@@ -389,13 +385,13 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
       {/* Recommended For You Section */}
       {recommendations.length > 0 && !searchQuery && selectedCategory === 'ALL' && (
         <div className="mb-8">
-          <div className="flex items-center gap-2 mb-3.5 px-1">
-            <Sparkles size={16} className="text-amber-500" />
+          <div className="flex items-center gap-2 mb-3 px-1">
+            <Sparkles size={16} className="text-blue-600" />
             <h3 className="font-extrabold text-sm text-slate-900 tracking-tight">
               Recommended For You
             </h3>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs divide-y divide-slate-100 overflow-hidden">
             {recommendations.map(item => (
               <DishCard
                 key={`rec-${item.id}`}
@@ -404,13 +400,14 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
                 isPopular
                 onAddToCart={addToCart}
                 onRemoveFromCart={removeFromCart}
+                onOpenDetails={(dish) => setSelectedFoodItem(dish)}
               />
             ))}
           </div>
         </div>
       )}
 
-      {/* Dishes by Category */}
+      {/* Dishes by Category - Clean Swiggy/Zomato List */}
       {filteredMenu.length === 0 ? (
         <div className="p-12 text-center text-slate-400 bg-white rounded-3xl border border-slate-200/80 my-4">
           <UtensilsCrossed size={36} className="mx-auto mb-2 text-slate-300" />
@@ -418,18 +415,18 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
           <p className="text-xs text-slate-400 mt-1">Try another search keyword or select All Dishes.</p>
         </div>
       ) : (
-        <div className="space-y-7">
+        <div className="space-y-6">
           {displayCategories.map(category => {
             const categoryItems = filteredMenu.filter(item => item.category === category);
             if (categoryItems.length === 0) return null;
 
             return (
               <div key={category}>
-                <div className="flex justify-between items-baseline mb-3 px-1 border-b border-slate-200/70 pb-2">
+                <div className="flex justify-between items-baseline mb-2.5 px-1">
                   <h3 className="font-black text-sm text-slate-900 tracking-tight">{category}</h3>
                   <span className="text-[11px] font-bold text-slate-400">{categoryItems.length} items</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs divide-y divide-slate-100 overflow-hidden">
                   {categoryItems.map(item => (
                     <DishCard
                       key={item.id}
@@ -438,6 +435,7 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
                       isPopular={recommendations.some(r => r.id === item.id)}
                       onAddToCart={addToCart}
                       onRemoveFromCart={removeFromCart}
+                      onOpenDetails={(dish) => setSelectedFoodItem(dish)}
                     />
                   ))}
                 </div>
@@ -447,9 +445,20 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
         </div>
       )}
 
-      {/* Floating Dynamic Cart Capsule */}
+      {/* Food Detail Modal (pops up on dish name click) */}
+      {selectedFoodItem && (
+        <FoodDetailModal
+          item={selectedFoodItem}
+          onClose={() => setSelectedFoodItem(null)}
+          cartItem={cart.find(i => i.itemId === selectedFoodItem.id)}
+          onAddToCart={addToCart}
+          onRemoveFromCart={removeFromCart}
+        />
+      )}
+
+      {/* Floating Swiggy/Zomato Blue Cart Bar */}
       {cart.length > 0 && (
-        <div className="fixed bottom-5 left-0 right-0 px-4 z-30 pointer-events-none">
+        <div className="fixed bottom-5 left-0 right-0 px-4 z-30 pointer-events-none animate-in slide-in-from-bottom-4 duration-200">
           <div className="max-w-md mx-auto pointer-events-auto">
             <button
               onClick={() => {
@@ -459,24 +468,24 @@ export default function StudentView({ user, userRecordReady, sharedActiveOrders,
                 }
                 setIsPaymentModalOpen(true);
               }}
-              className="w-full bg-slate-900 hover:bg-black text-white rounded-full p-3.5 px-5 flex items-center justify-between shadow-2xl shadow-slate-900/30 google-touch google-ripple transition-all cursor-pointer"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-3.5 px-5 flex items-center justify-between shadow-xl shadow-blue-500/25 transition-all cursor-pointer active:scale-[0.98]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
-                  <ShoppingCart size={16} />
+                <div className="w-8 h-8 rounded-xl bg-white/20 text-white flex items-center justify-center">
+                  <ShoppingCart size={17} />
                 </div>
                 <div className="text-left">
-                  <span className="font-bold text-xs block">{totalCartCount} item{totalCartCount > 1 ? 's' : ''} in cart</span>
-                  <span className="text-[11px] text-slate-300 font-medium">
+                  <span className="font-extrabold text-xs block">{totalCartCount} item{totalCartCount > 1 ? 's' : ''} added</span>
+                  <span className="text-[11px] text-blue-100 font-medium">
                     Pay at counter
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="font-semibold text-base tabular-nums">₹{cartTotal.toFixed(2)}</span>
-                <span className="rounded-full bg-white/15 px-3.5 py-2 text-xs font-semibold">
-                  Review order
+                <span className="font-black text-base tabular-nums">₹{cartTotal.toFixed(2)}</span>
+                <span className="rounded-xl bg-white text-blue-700 px-3.5 py-1.5 text-xs font-black shadow-xs">
+                  View Cart →
                 </span>
               </div>
             </button>

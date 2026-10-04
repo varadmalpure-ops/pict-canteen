@@ -529,7 +529,7 @@ export default function KitchenView() {
                       <div>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Token Number</span>
                         <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-slate-900">
-                          {order.token_number}
+                          #{order.token_number}
                         </span>
                       </div>
                       

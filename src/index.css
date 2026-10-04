@@ -52,33 +52,11 @@
   }
 }
 
-/* Material & Google Tactile Touch Response & Ripple */
-.google-ripple:not(.fixed):not(.absolute):not([class*="fixed"]):not([class*="absolute"]) {
-  position: relative;
-}
+/* Swiggy/Zomato clean tactile touch response (bubbly ripple removed) */
 .google-ripple {
-  overflow: hidden;
+  /* Clean touch without distracting bubbles */
   user-select: none;
   -webkit-user-select: none;
-}
-
-.google-ripple::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle, currentColor 10%, transparent 10.01%);
-  background-repeat: no-repeat;
-  background-position: 50%;
-  transform: scale(10, 10);
-  opacity: 0;
-  transition: transform 0.35s ease-out, opacity 0.5s ease-out;
-  pointer-events: none;
-}
-
-.google-ripple:active::after {
-  transform: scale(0, 0);
-  opacity: 0.18;
-  transition: 0s;
 }
 
 /* Google-like tactile button touch response */
