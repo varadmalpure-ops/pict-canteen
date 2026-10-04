@@ -130,7 +130,7 @@ function App() {
     <ThemeProvider>
       <Router>
         <PWAInstallPrompt />
-        <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
+        <div className="min-h-screen bg-transparent flex flex-col font-sans text-slate-900 transition-colors">
           <Navbar
             user={user}
             activeOrders={activeOrders}
@@ -159,6 +159,7 @@ function App() {
                 <Route path="/login" element={user ? <Navigate to="/" /> : <StudentAuth />} />
                 <Route path="/profile" element={user ? <StudentProfile /> : <Navigate to="/login" />} />
                 <Route path="/admin" element={<AdminView />} />
+                <Route path="/manager" element={<Navigate to="/admin" replace />} />
                 <Route path="/admin.html" element={<Navigate to="/admin" replace />} />
                 <Route path="/kitchen" element={<KitchenView />} />
                 <Route path="/display" element={<CanteenQRCode url={window.location.origin} />} />

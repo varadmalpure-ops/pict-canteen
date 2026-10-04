@@ -30,18 +30,14 @@ import {
   ExternalLink,
   ShieldCheck,
   LogOut,
-  AlertCircle,
-  ArrowRight,
-  Utensils
+  AlertCircle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function KitchenView() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [isChefBypass, setIsChefBypass] = useState(false);
   const [loginError, setLoginError] = useState('');
-  const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -101,7 +97,7 @@ export default function KitchenView() {
 
   // Live order subscription: Always active when user is logged in or chef bypass enabled
   useEffect(() => {
-    if (!user && !isChefBypass) {
+    if (!user) {
       setLoading(false);
       return;
     }
@@ -159,7 +155,7 @@ export default function KitchenView() {
     });
 
     return () => unsub();
-  }, [user, isChefBypass, playChime]);
+  }, [user, playChime]);
 
   const advanceOrder = async (orderId: string, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED') => {
     setIsUpdating(orderId);
@@ -229,8 +225,8 @@ export default function KitchenView() {
     );
   }
 
-  // Not signed in & not in bypass: Modern clean Stock Android Sign-in Card
-  if (!user && !isChefBypass) {
+  // Not signed in: Modern clean Staff Sign-in Card
+  if (!user) {
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 sm:p-6 bg-slate-50/80">
         <div className="w-full max-w-md bg-white rounded-[28px] p-7 sm:p-9 shadow-xl shadow-slate-200/50 border border-slate-200/80">
@@ -264,31 +260,10 @@ export default function KitchenView() {
             Sign in with Google
           </button>
 
-          {/* Instant Chef Terminal Access Button */}
-          <button
-            type="button"
-            onClick={() => setIsChefBypass(true)}
-            className="w-full mt-3 min-h-[3rem] bg-slate-900 hover:bg-black text-white rounded-full font-bold text-xs flex items-center justify-center gap-2 transition-all google-touch cursor-pointer shadow-md shadow-slate-900/10"
-          >
-            <Utensils size={15} />
-            <span>Open Kitchen Screen (Chef Mode)</span>
-            <ArrowRight size={14} />
-          </button>
-
-          {/* Collapsible Email form */}
-          {!showEmailLogin ? (
-            <div className="mt-6 text-center">
-              <button
-                type="button"
-                onClick={() => setShowEmailLogin(true)}
-                className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors"
-              >
-                Sign in with Staff Email instead
-              </button>
-            </div>
-          ) : (
+          {/* Email form or Google Login */}
+          <div className="mt-4 pt-4 border-t border-slate-100">
             <form
-              className="mt-6 space-y-3 pt-4 border-t border-slate-100"
+              className="space-y-3"
               onSubmit={async (e) => {
                 e.preventDefault();
                 try {
@@ -299,30 +274,36 @@ export default function KitchenView() {
                 }
               }}
             >
-              <input 
-                type="email" 
-                required 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                placeholder="Staff email" 
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-xs font-semibold outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all" 
-              />
-              <input 
-                type="password" 
-                required 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                placeholder="Password" 
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-xs font-semibold outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all" 
-              />
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Staff Email</label>
+                <input 
+                  type="email" 
+                  required 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)} 
+                  placeholder="kitchen@pictcanteen.ac.in" 
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all bg-slate-50 focus:bg-white" 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Staff Password</label>
+                <input 
+                  type="password" 
+                  required 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  placeholder="••••••••" 
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all bg-slate-50 focus:bg-white" 
+                />
+              </div>
               <button 
                 type="submit" 
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold text-xs transition-colors cursor-pointer"
+                className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer shadow-xs"
               >
-                Sign In
+                Sign In to Kitchen KDS
               </button>
             </form>
-          )}
+          </div>
 
           <div className="mt-6 text-center">
             <Link to="/" className="text-xs font-bold text-blue-600 hover:underline">

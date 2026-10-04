@@ -146,3 +146,51 @@
 .contain-layout {
   contain: layout style;
 }
+
+/* Food Background Themes Support */
+[data-food-theme] {
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+[data-food-theme="midnight"] body {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+[data-food-theme="midnight"] .bg-white {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+[data-food-theme="midnight"] .text-slate-900,
+[data-food-theme="midnight"] .text-slate-950 {
+  color: #f8fafc !important;
+}
+
+[data-food-theme="midnight"] .text-slate-700,
+[data-food-theme="midnight"] .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+[data-food-theme="midnight"] .text-slate-500,
+[data-food-theme="midnight"] .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+[data-food-theme="midnight"] .border-slate-100,
+[data-food-theme="midnight"] .border-slate-200,
+[data-food-theme="midnight"] .border-slate-200\/60,
+[data-food-theme="midnight"] .border-slate-200\/70,
+[data-food-theme="midnight"] .border-slate-200\/80,
+[data-food-theme="midnight"] .border-slate-200\/90 {
+  border-color: #334155 !important;
+}
+
+[data-food-theme="midnight"] .bg-slate-50 {
+  background-color: #0b0f19 !important;
+}
+
+[data-food-theme="midnight"] .bg-slate-100 {
+  background-color: #334155 !important;
+}
+

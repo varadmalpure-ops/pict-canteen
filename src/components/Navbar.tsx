@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut, type User } from 'firebase/auth';
 import { auth } from '../firebase';
-import { BellRing, LogOut, Menu, UtensilsCrossed, UserRound, X } from 'lucide-react';
+import { BellRing, LogOut, Menu, UtensilsCrossed, UserRound, X, Palette } from 'lucide-react';
 import type { Order } from '../types';
+import ThemeSelector from './ThemeSelector';
 
 interface NavbarProps {
   user: User | null;
@@ -13,66 +14,157 @@ interface NavbarProps {
 
 export default function Navbar({ user, activeOrders = [], onOpenOrdersModal }: NavbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isThemeOpen, setIsThemeOpen] = useState(false);
   const location = useLocation();
   const readyOrder = activeOrders.find((order) => order.status === 'READY');
   const currentOrder = readyOrder || activeOrders[0];
 
-  const linkClass = (path: string) => `inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition-colors ${
-    location.pathname === path ? 'bg-blue-50 text-blue-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+  const linkClass = (path: string) => `inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full px-3.5 text-xs font-bold transition-all ${
+    location.pathname === path ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
   }`;
 
   const closeMenu = () => setMenuOpen(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
-        <Link to="/" onClick={closeMenu} className="flex min-w-0 items-center gap-3 rounded-xl text-slate-900">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-blue-50 text-blue-700"><UtensilsCrossed size={19} /></span>
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold tracking-tight">PICT Canteen</span>
-            <span className="block truncate text-[11px] text-slate-500">Campus food, ready when you are</span>
-          </span>
-        </Link>
+    <>
+      <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/95 backdrop-blur-xl transition-colors">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
+          {/* Logo & Canteen Identity */}
+          <Link to="/" onClick={closeMenu} className="flex min-w-0 items-center gap-2.5 rounded-xl text-slate-950 group">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-600 text-white shadow-sm shadow-blue-500/25 group-hover:scale-105 transition-transform">
+              <UtensilsCrossed size={19} />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-black tracking-tight text-slate-950">PICT Canteen</span>
+              <span className="block truncate text-[10px] font-bold text-slate-400">100% Pure Vegetarian Campus Kitchen</span>
+            </span>
+          </Link>
 
-        {currentOrder && onOpenOrdersModal && (
-          <button onClick={onOpenOrdersModal} className={`hidden items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold sm:flex ${readyOrder ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
-            {readyOrder ? <BellRing size={15} /> : <span className="h-2 w-2 rounded-full bg-blue-600" />}
-            {readyOrder ? `Token ${readyOrder.token_number} is ready` : `Token ${currentOrder.token_number} in progress`}
-          </button>
+          {/* Active Token Tracker Button if user has active order */}
+          {currentOrder && onOpenOrdersModal && (
+            <button
+              onClick={onOpenOrdersModal}
+              className={`flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-black transition-all cursor-pointer shadow-xs ${
+                readyOrder
+                  ? 'bg-emerald-600 text-white shadow-emerald-500/25 animate-pulse'
+                  : 'bg-amber-400 text-slate-950 shadow-amber-400/20'
+              }`}
+            >
+              {readyOrder ? <BellRing size={14} /> : <span className="h-2 w-2 rounded-full bg-slate-950 animate-ping" />}
+              <span>{readyOrder ? `Token #${readyOrder.token_number} Ready!` : `Token #${currentOrder.token_number} in kitchen`}</span>
+            </button>
+          )}
+
+          {/* Right Controls: Desktop Nav */}
+          <div className="hidden items-center gap-1.5 md:flex">
+            <Link to="/" className={linkClass('/')}>
+              Menu
+            </Link>
+
+            {/* Theme Selector Trigger */}
+            <button
+              type="button"
+              onClick={() => setIsThemeOpen(true)}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+              title="Change Background Theme"
+            >
+              <Palette size={15} className="text-amber-500" />
+              <span>Theme</span>
+            </button>
+
+            {user ? (
+              <>
+                <Link to="/profile" className={linkClass('/profile')}>
+                  <UserRound size={15} />
+                  <span>Account</span>
+                </Link>
+                <button
+                  onClick={() => void signOut(auth)}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                >
+                  <LogOut size={15} />
+                  <span>Sign out</span>
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="ml-1 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-blue-700 px-4 text-xs font-black text-white hover:bg-blue-800 shadow-xs transition-all"
+              >
+                <UserRound size={14} />
+                <span>Sign in</span>
+              </Link>
+            )}
+          </div>
+
+          {/* Mobile Actions: Theme + Burger */}
+          <div className="flex items-center gap-1 md:hidden">
+            <button
+              type="button"
+              onClick={() => setIsThemeOpen(true)}
+              className="grid h-9 w-9 place-items-center rounded-full text-slate-700 hover:bg-slate-100 cursor-pointer"
+              aria-label="Change Background Theme"
+            >
+              <Palette size={18} className="text-amber-500" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((val) => !val)}
+              aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+              className="grid h-10 w-10 place-items-center rounded-full text-slate-700 hover:bg-slate-100"
+            >
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Dropdown Menu */}
+        {menuOpen && (
+          <nav className="border-b border-slate-200 bg-white p-3 shadow-lg md:hidden animate-in slide-in-from-top-2 duration-150" aria-label="Mobile navigation">
+            <Link to="/" onClick={closeMenu} className={`${linkClass('/')} w-full justify-start py-2.5`}>
+              Menu
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                closeMenu();
+                setIsThemeOpen(true);
+              }}
+              className="flex min-h-10 w-full items-center gap-2 rounded-full px-4 text-xs font-bold text-slate-700 hover:bg-slate-100"
+            >
+              <Palette size={16} className="text-amber-500" />
+              <span>Background Theme</span>
+            </button>
+            {user ? (
+              <>
+                <Link to="/profile" onClick={closeMenu} className={`${linkClass('/profile')} w-full justify-start py-2.5`}>
+                  <UserRound size={15} /> Account
+                </Link>
+                <button
+                  onClick={() => {
+                    void signOut(auth);
+                    closeMenu();
+                  }}
+                  className="flex min-h-10 w-full items-center gap-2 rounded-full px-4 text-xs font-bold text-rose-600 hover:bg-rose-50"
+                >
+                  <LogOut size={15} /> Sign out
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                onClick={closeMenu}
+                className="mt-2 flex min-h-10 items-center justify-center gap-2 rounded-full bg-blue-700 px-4 text-xs font-black text-white"
+              >
+                <UserRound size={15} /> Sign in
+              </Link>
+            )}
+          </nav>
         )}
+      </header>
 
-        <button type="button" onClick={() => setMenuOpen((value) => !value)} aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={menuOpen} className="grid h-10 w-10 place-items-center rounded-full text-slate-700 hover:bg-slate-100 md:hidden">
-          {menuOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
-
-        <nav className="hidden items-center gap-1 md:flex" aria-label="Main navigation">
-          <Link to="/" className={linkClass('/')}>Menu</Link>
-          <Link to="/kitchen" className={linkClass('/kitchen')}>Kitchen KDS</Link>
-          {user ? (
-            <>
-              <Link to="/profile" className={linkClass('/profile')}><UserRound size={16} /> Account</Link>
-              <button onClick={() => void signOut(auth)} className="inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"><LogOut size={16} /> Sign out</button>
-            </>
-          ) : (
-            <Link to="/login" className="ml-1 inline-flex min-h-10 items-center gap-2 rounded-full bg-blue-700 px-5 text-sm font-semibold text-white hover:bg-blue-800"><UserRound size={16} /> Sign in</Link>
-          )}
-        </nav>
-      </div>
-
-      {menuOpen && (
-        <nav className="absolute left-0 right-0 top-16 border-b border-slate-200 bg-white p-3 shadow-lg md:hidden" aria-label="Mobile navigation">
-          <Link to="/" onClick={closeMenu} className={`${linkClass('/')} w-full justify-start`}>Menu</Link>
-          <Link to="/kitchen" onClick={closeMenu} className={`${linkClass('/kitchen')} w-full justify-start`}>Kitchen KDS</Link>
-          {user ? (
-            <>
-              <Link to="/profile" onClick={closeMenu} className={`${linkClass('/profile')} w-full justify-start`}><UserRound size={16} /> Account</Link>
-              <button onClick={() => { void signOut(auth); closeMenu(); }} className="flex min-h-10 w-full items-center gap-2 rounded-full px-4 text-sm font-medium text-slate-600 hover:bg-slate-100"><LogOut size={16} /> Sign out</button>
-            </>
-          ) : (
-            <Link to="/login" onClick={closeMenu} className="mt-1 flex min-h-11 items-center justify-center gap-2 rounded-full bg-blue-700 px-4 text-sm font-semibold text-white"><UserRound size={16} /> Sign in</Link>
-          )}
-        </nav>
-      )}
-    </header>
+      {/* Theme Picker Modal */}
+      <ThemeSelector isOpen={isThemeOpen} onClose={() => setIsThemeOpen(false)} />
+    </>
   );
 }

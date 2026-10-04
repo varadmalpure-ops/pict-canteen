@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy, addDoc, deleteDoc, setDoc, limit } from 'firebase/firestore';
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, type User } from 'firebase/auth';
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, updatePassword, type User } from 'firebase/auth';
 import { db, menuItemsCollection, auth } from '../firebase';
 import { assertIsAdmin } from '../lib/adminAuth';
 import { updateOrderStatus } from '../lib/orderService';
@@ -18,13 +18,17 @@ import {
   Clock, 
   LogOut, 
   Tv, 
-  Search 
+  Search,
+  UserCheck,
+  LockKeyhole,
+  CheckCircle2,
+  QrCode
 } from 'lucide-react';
 
 export default function AdminView() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [tab, setTab] = useState<'INVENTORY' | 'ORDERS' | 'ANALYTICS'>('INVENTORY');
+  const [tab, setTab] = useState<'INVENTORY' | 'ORDERS' | 'ANALYTICS' | 'PROFILE'>('INVENTORY');
   const [searchMenu, setSearchMenu] = useState('');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -41,6 +45,30 @@ export default function AdminView() {
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [loginError, setLoginError] = useState('');
+
+  // Manager Profile States
+  const [managerNewPassword, setManagerNewPassword] = useState('');
+  const [managerPasswordMessage, setManagerPasswordMessage] = useState('');
+  const [managerPasswordError, setManagerPasswordError] = useState('');
+  const [isCanteenOpen, setIsCanteenOpen] = useState(true);
+
+  const handleManagerPasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !managerNewPassword) return;
+    setManagerPasswordError('');
+    setManagerPasswordMessage('');
+    try {
+      await updatePassword(user, managerNewPassword);
+      setManagerPasswordMessage('Manager password updated successfully.');
+      setManagerNewPassword('');
+    } catch (err: any) {
+      if (err.code === 'auth/requires-recent-login') {
+        setManagerPasswordError('Please sign out and log in again before changing password.');
+      } else {
+        setManagerPasswordError(err?.message || 'Failed to update manager password.');
+      }
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -337,14 +365,14 @@ export default function AdminView() {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex bg-slate-100 p-1 rounded-2xl my-6 max-w-md">
+      <div className="flex bg-slate-100 p-1 rounded-2xl my-6 max-w-xl">
         <button
           onClick={() => setTab('INVENTORY')}
           className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
             tab === 'INVENTORY' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Utensils size={14} /> Menu & Pricing ({menu.length})
+          <Utensils size={14} /> Menu ({menu.length})
         </button>
         <button
           onClick={() => setTab('ORDERS')}
@@ -352,7 +380,7 @@ export default function AdminView() {
             tab === 'ORDERS' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Clock size={14} /> All Orders ({orders.length})
+          <Clock size={14} /> Orders ({orders.length})
         </button>
         <button
           onClick={() => setTab('ANALYTICS')}
@@ -361,6 +389,14 @@ export default function AdminView() {
           }`}
         >
           <DollarSign size={14} /> Analytics
+        </button>
+        <button
+          onClick={() => setTab('PROFILE')}
+          className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+            tab === 'PROFILE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <UserCheck size={14} /> Manager Profile
         </button>
       </div>
 
@@ -562,6 +598,187 @@ export default function AdminView() {
             <div className="text-xs font-bold uppercase text-slate-400">Active Kitchen Queue</div>
             <div className="text-3xl font-black text-amber-600 mt-2">{analytics.activeQueue}</div>
             <div className="text-xs text-slate-500 mt-1">Currently cooking / pending</div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: MANAGER PROFILE & OPERATIONS */}
+      {tab === 'PROFILE' && (
+        <div className="space-y-6">
+          {/* Manager Identity Card */}
+          <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black text-xl shadow-md shadow-indigo-600/20">
+                <ShieldCheck size={28} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-black text-slate-900">
+                    Canteen Operations Manager
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    Active Session
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">{user.email}</p>
+                <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5">
+                  <span>Role: Staff Administrator</span>
+                  <span>•</span>
+                  <span>PICT Campus Canteen</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => signOut(auth)}
+              className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto transition-colors cursor-pointer border border-rose-200"
+            >
+              <LogOut size={15} />
+              <span>Sign Out Manager</span>
+            </button>
+          </div>
+
+          {/* Operational Controls & Live Status */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Store Ordering Status</span>
+                <span className={`w-3 h-3 rounded-full ${isCanteenOpen ? 'bg-emerald-500 ring-4 ring-emerald-100' : 'bg-rose-500 ring-4 ring-rose-100'}`} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-base font-black text-slate-900">
+                    {isCanteenOpen ? '🟢 Canteen Open (Accepting Orders)' : '🔴 Orders Paused'}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isCanteenOpen ? 'Students can place orders via web & QR' : 'Ordering temporarily halted for rush hour'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCanteenOpen(!isCanteenOpen)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+                    isCanteenOpen
+                      ? 'bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
+                  }`}
+                >
+                  {isCanteenOpen ? 'Pause Orders' : 'Resume Orders'}
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-xs">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Today's Quick Numbers</span>
+              <div className="grid grid-cols-2 gap-3 mt-1">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Live Queue</span>
+                  <span className="text-xl font-black text-amber-600 block">{analytics.activeQueue} tokens</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Fulfilled</span>
+                  <span className="text-xl font-black text-emerald-600 block">{analytics.completedCount} orders</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Operational Display Shortcuts */}
+          <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-xs">
+            <h3 className="text-sm font-black text-slate-900 mb-1">
+              Station & Display Controls
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Open operational screens on tablets or counter displays
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <a
+                href="/kitchen"
+                className="p-4 rounded-2xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 flex flex-col justify-between transition-all group"
+              >
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold mb-2 shadow-xs group-hover:scale-105 transition-transform">
+                    <ChefHat size={20} />
+                  </div>
+                  <div className="font-black text-sm text-slate-900">Kitchen KDS</div>
+                  <p className="text-[11px] text-amber-900 mt-0.5">Chef screen to mark orders preparing & ready</p>
+                </div>
+                <span className="text-xs font-black text-amber-800 mt-3 inline-block">Launch KDS ➔</span>
+              </a>
+
+              <a
+                href="/live"
+                target="_blank"
+                rel="noreferrer"
+                className="p-4 rounded-2xl bg-blue-50 hover:bg-blue-100/80 border border-blue-200 flex flex-col justify-between transition-all group"
+              >
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold mb-2 shadow-xs group-hover:scale-105 transition-transform">
+                    <Tv size={20} />
+                  </div>
+                  <div className="font-black text-sm text-slate-900">Live TV Board</div>
+                  <p className="text-[11px] text-blue-900 mt-0.5">Fullscreen token display for dining hall TV</p>
+                </div>
+                <span className="text-xs font-black text-blue-800 mt-3 inline-block">Open TV Board ➔</span>
+              </a>
+
+              <a
+                href="/display"
+                target="_blank"
+                rel="noreferrer"
+                className="p-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 flex flex-col justify-between transition-all group"
+              >
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold mb-2 shadow-xs group-hover:scale-105 transition-transform">
+                    <QrCode size={20} />
+                  </div>
+                  <div className="font-black text-sm text-slate-900">Counter QR Standee</div>
+                  <p className="text-[11px] text-emerald-900 mt-0.5">Printable or displayable QR code for students</p>
+                </div>
+                <span className="text-xs font-black text-emerald-800 mt-3 inline-block">View Standee ➔</span>
+              </a>
+            </div>
+          </div>
+
+          {/* Manager Password Management */}
+          <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-xs">
+            <h3 className="flex items-center gap-2 text-sm font-black text-slate-900 mb-1">
+              <LockKeyhole size={17} className="text-indigo-600" />
+              Update Staff Manager Password
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Set a secure new password for staff login. Minimum 6 characters.
+            </p>
+
+            {managerPasswordError && (
+              <div className="mb-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold">
+                {managerPasswordError}
+              </div>
+            )}
+            {managerPasswordMessage && (
+              <div className="mb-3 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                <CheckCircle2 size={15} />
+                <span>{managerPasswordMessage}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleManagerPasswordUpdate} className="flex flex-col sm:flex-row gap-3 max-w-lg">
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={managerNewPassword}
+                onChange={(e) => setManagerNewPassword(e.target.value)}
+                placeholder="New staff password"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold outline-none focus:bg-white focus:border-indigo-500"
+              />
+              <button
+                type="submit"
+                className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-black rounded-xl transition-all cursor-pointer shadow-xs"
+              >
+                Update Password
+              </button>
+            </form>
           </div>
         </div>
       )}
