@@ -173,7 +173,7 @@ service cloud.firestore {
           'uid', 'token_number', 'items', 'total_amount', 'status', 'created_at',
           'payment_status', 'payment_method', 'scheduled_for'
         ])
-        && request.resource.data.token_number == 'A-' + orderId.substring(0, 6)
+        && request.resource.data.token_number == 'A-' + orderId
         && request.resource.data.status == 'Pending'
         && request.resource.data.created_at == request.time
         && request.resource.data.payment_status == 'Pay at Counter'

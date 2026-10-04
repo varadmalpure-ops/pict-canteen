@@ -24,7 +24,7 @@ export async function createStudentOrder(input: {
 
   const totalAmount = items.reduce((total, item) => total + item.price * item.quantity, 0);
   const orderRef = doc(ordersCollection);
-  const tokenNumber = `A-${orderRef.id.substring(0, 6)}`;
+  const tokenNumber = `A-${orderRef.id}`;
   const status: OrderStatus = 'Pending';
   const order = {
     uid: input.uid,

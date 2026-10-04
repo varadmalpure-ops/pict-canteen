@@ -4,6 +4,7 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
+    "site": "pict-canteen-aa0c6",
     "public": "dist",
     "ignore": [
       "firebase.json",
